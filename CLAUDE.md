@@ -53,14 +53,15 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 - Max 40 lines per function. Split if longer.
 - Every module under `bot/`, `agent/`, `github/`, `sandbox/`, `memory/` has a matching `tests/test_<module>.py`.
 - Black-formatted, 100-char line limit.
+- **Package management: `uv` only.** Never invoke `pip` or `python -m venv` directly. If `.venv/` is missing, run `uv venv --python 3.11`. Add deps with `uv add <pkg>` (dev: `uv add --group dev <pkg>`) and commit `uv.lock`. Run everything via `uv run <cmd>` — e.g. `uv run pytest`, `uv run python main.py`.
 
 ## 5. Phased Build Plan
 
 ### Phase 0 – Environment Setup
 - **Goal:** Project skeleton + verified API connectivity.
 - **Create:** `requirements.txt`, `.env`, `.env.example`, `config/settings.py`, `main.py` (stub), directory tree from spec.
-- **Milestone:** `python -c "from config.settings import settings; print(settings.verify())"` prints OK for Groq, Telegram, GitHub, E2B.
-- **Test:** `pytest tests/test_settings.py -v`
+- **Milestone:** `uv run python -c "from config.settings import get; print(get().verify())"` prints OK for Groq, Telegram, GitHub, E2B.
+- **Test:** `uv run pytest tests/test_settings.py -v`
 
 ### Phase 1 – Telegram Skeleton
 - **Goal:** Bot online, command routing works, no agent logic yet.
