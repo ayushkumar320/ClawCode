@@ -231,7 +231,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 
 ## 11. Current Phase Tracker
 
-Authoritative pointer: [docs/current-phase.md](docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
+Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
 Current Phase: Phase 1 — Telegram Skeleton
