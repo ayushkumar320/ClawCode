@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## 1. Project Identity
 
@@ -51,7 +51,7 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 - Every external API call wrapped in `try/except` with a logged, actionable message.
 - No `print()`. Use `logging.getLogger(__name__)`.
 - Max 40 lines per function. Split if longer.
-- Every module under `bot/`, `agent/`, `gh/`, `sandbox/`, `memory/` has a matching `tests/test_<module>.py`.
+- Every module under `bot/`, `agent/`, `github/`, `sandbox/`, `memory/` has a matching `tests/test_<module>.py`.
 - Black-formatted, 100-char line limit.
 - **Package management: `uv` only.** Never invoke `pip` or `python -m venv` directly. If `.venv/` is missing, run `uv venv --python 3.11`. Add deps with `uv add <pkg>` (dev: `uv add --group dev <pkg>`) and commit `uv.lock`. Run everything via `uv run <cmd>` — e.g. `uv run pytest`, `uv run python main.py`.
 
@@ -72,7 +72,7 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 
 ### Phase 2 – GitHub Tools
 - **Goal:** Standalone repo manipulation, no agent involved.
-- **Create:** `gh/repo_manager.py`, `gh/pr_manager.py`.
+- **Create:** `github/repo_manager.py`, `github/pr_manager.py`.
 - **Functions:** `clone_repo`, `list_files`, `read_file`, `create_branch`, `write_file`, `commit`, `push_branch`, `open_pr`.
 - **Milestone:** Script creates branch `agent/test`, writes `HELLO.md`, pushes, opens PR against a test repo.
 - **Test:** `pytest tests/test_repo_manager.py tests/test_pr_manager.py -v` (use a dedicated sandbox repo).
@@ -119,8 +119,8 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 | `agent/orchestrator.py` | Agentic loop, Groq calls, checkpointing | Touch Telegram or GitHub APIs directly |
 | `agent/tools.py` | Tool schemas + dispatch to managers | Contain LLM calls |
 | `agent/memory.py` | Lesson save/retrieve via store | Embed Telegram concerns |
-| `gh/repo_manager.py` | Clone, read, write, branch, commit, push | Open PRs |
-| `gh/pr_manager.py` | Open/update PRs, post comments | Modify files |
+| `github/repo_manager.py` | Clone, read, write, branch, commit, push | Open PRs |
+| `github/pr_manager.py` | Open/update PRs, post comments | Modify files |
 | `sandbox/e2b_runner.py` | Sandbox lifecycle + pytest | Persist anything |
 | `memory/store.py` | ChromaDB collection wrapper | Know about agents |
 | `checkpoints/` | JSON snapshots of agent state | Be committed to git |
@@ -210,8 +210,8 @@ MAX_TEST_RETRIES=3
 |---|---|
 | `config/settings` | Missing key raises; values parsed correctly |
 | `bot/*` | Command dispatch, user allowlist enforcement, keyboard callback parsing |
-| `gh/repo_manager` | Clone, read, write, branch creation against fixture repo |
-| `gh/pr_manager` | PR open returns URL, idempotent on retry |
+| `github/repo_manager` | Clone, read, write, branch creation against fixture repo |
+| `github/pr_manager` | PR open returns URL, idempotent on retry |
 | `sandbox/e2b_runner` | Pass-case + fail-case exit codes, timeout handling |
 | `agent/orchestrator` | Tool dispatch, retry cap, checkpoint round-trip, approval gate |
 | `agent/memory` | Save → retrieve top-k, repo isolation |
@@ -234,7 +234,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 3 — E2B Sandbox
-Last completed milestone: Phase 2 (gh.repo_manager + gh.pr_manager + exceptions; clone/list/read/write/branch/commit/push + idempotent open_pr; 19 tests; 93% coverage)
-Next action: Build sandbox/e2b_runner.py + sandbox/exceptions.py + tests/test_e2b_runner.py per docs/current-phase.md.
+Current Phase: Phase 2 — GitHub Tools
+Last completed milestone: Phase 1 (PTB skeleton; /repo, /status, /history, /cancel, echo, allowlist; 24 tests green)
+Next action: Build github/repo_manager.py, github/pr_manager.py, github/exceptions.py + tests per docs/current-phase.md.
 ```

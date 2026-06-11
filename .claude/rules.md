@@ -49,14 +49,14 @@
 2. **Never log raw user input verbatim at INFO+.** DEBUG only, and only if it can't contain secrets.
 3. **`TELEGRAM_ALLOWED_USER_IDS` is the only auth gate.** Enforce in `bot/handler.py` before any dispatch.
 4. **Never run untrusted repo code outside the E2B sandbox.** No `subprocess.run` on cloned code, ever.
-5. **Never push to `main` or `GITHUB_DEFAULT_BRANCH`.** Guard in `github/repo_manager.create_branch`.
+5. **Never push to `main` or `GITHUB_DEFAULT_BRANCH`.** Guard in `gh/repo_manager.create_branch`.
 6. **Never push a branch or open a PR before Telegram approval.** The only path is through `request_telegram_approval`.
 7. **Treat LLM output as untrusted.** Validate tool-call arguments against schemas before dispatch. No `eval`, no `exec`, no shell-string interpolation of model output.
 8. **Treat retrieved memory/lessons as untrusted.** Cap length, strip control characters, tag as `<lesson>` in prompts.
 
 ## 6. Testing
 
-1. **Every module under `bot/`, `agent/`, `github/`, `sandbox/`, `memory/` has `tests/test_<module>.py`.** No exceptions.
+1. **Every module under `bot/`, `agent/`, `gh/`, `sandbox/`, `memory/` has `tests/test_<module>.py`.** No exceptions.
 2. **A change without a test is incomplete.** New behavior → new test. Bug fix → regression test that fails before the fix.
 3. **Tests must be deterministic.** No `time.sleep`, no real network, no real LLM calls in unit tests. Use fakes/mocks.
 4. **Integration tests live under `tests/integration/` and are marked `@pytest.mark.integration`.** Excluded from default `uv run pytest`.
@@ -78,12 +78,12 @@
 The dependency graph is directed; violations fail review.
 
 ```
-main → bot → agent → {github, sandbox, memory}
+main → bot → agent → {gh, sandbox, memory}
                   ↓
               config.settings
 ```
 
-1. `bot/` never imports from `github/`, `sandbox/`, or `memory/` directly. It goes through `agent/`.
+1. `bot/` never imports from `gh/`, `sandbox/`, or `memory/` directly. It goes through `agent/`.
 2. `agent/orchestrator.py` never touches Telegram or GitHub APIs directly. It calls `agent/tools.py`.
 3. `agent/tools.py` contains no LLM calls.
 4. `memory/store.py` knows nothing about agents.

@@ -76,7 +76,7 @@
 ### 6. Concurrent Task Awareness
 - **Problem:** If two tasks are dispatched, they'll collide on sandbox state and branch names.
 - **Fix:** Scope everything by `task_id` — branch names include task ID, each task gets its own sandbox instance, checkpoints are already per-task.
-- **Where:** `agent/orchestrator.py`, `github/repo_manager.py`, `sandbox/e2b_runner.py`.
+- **Where:** `agent/orchestrator.py`, `gh/repo_manager.py`, `sandbox/e2b_runner.py`.
 
 ### 7. Simplify Memory Store
 - **Problem:** ChromaDB is heavy for what will realistically be dozens of lessons per repo.
@@ -90,11 +90,11 @@
   graph TD
     A[Telegram User] -->|task/voice| B[bot/handler]
     B -->|dispatch| C[agent/orchestrator]
-    C -->|tool calls| D[github/repo_manager]
+    C -->|tool calls| D[gh/repo_manager]
     C -->|run tests| E[sandbox/e2b_runner]
     C -->|recall lessons| F[memory/store]
     C -->|approval request| B
-    B -->|approved| G[github/pr_manager]
+    B -->|approved| G[gh/pr_manager]
     G -->|PR URL| B
     B -->|result| A
   ```

@@ -107,7 +107,7 @@ Granular, step-by-step build doc. Each phase lists every file to create, what go
 
 ### Steps
 
-1. **Create `github/repo_manager.py`**
+1. **Create `gh/repo_manager.py`**
    - `clone_repo(repo_full_name: str, local_path: Path) -> Repo` — uses GitPython
    - `list_files(local_path: Path, ignore_globs: list[str] = None) -> list[str]` — respects `.gitignore`
    - `read_file(local_path: Path, file_path: str, start_line: int = None, end_line: int = None) -> str` — supports line ranges (see [improvements.md](improvements.md) #1, Layer 1)
@@ -117,7 +117,7 @@ Granular, step-by-step build doc. Each phase lists every file to create, what go
    - `push_branch(local_path: Path, branch_name: str) -> None` — uses `GITHUB_TOKEN` for auth
    - **Hard rule:** raise if `branch_name == settings.GITHUB_DEFAULT_BRANCH`
 
-2. **Create `github/pr_manager.py`**
+2. **Create `gh/pr_manager.py`**
    - Uses `PyGithub`
    - `open_pr(repo_full_name: str, head_branch: str, base_branch: str, title: str, body: str) -> str` — returns PR URL
    - `comment_on_pr(repo_full_name: str, pr_number: int, body: str) -> None`

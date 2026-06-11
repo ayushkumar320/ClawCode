@@ -27,7 +27,7 @@ ClawCode/
 │   ├── tools.py             # Tool schemas + dispatch to repo_manager/e2b_runner
 │   └── memory.py            # Lesson save/retrieve via memory/store.py
 │
-├── github/
+├── gh/
 │   ├── __init__.py
 │   ├── repo_manager.py      # Clone, read, write, branch, commit, push
 │   └── pr_manager.py        # Open/update PRs, post comments
@@ -64,9 +64,9 @@ ClawCode/
 |---|---|---|
 | `bot/` | `agent/orchestrator` | GitHub, E2B, ChromaDB |
 | `agent/orchestrator` | `agent/tools`, `agent/memory` | Telegram, GitHub APIs directly |
-| `agent/tools` | `github/repo_manager`, `sandbox/e2b_runner` | LLM, Telegram |
-| `github/repo_manager` | Git, filesystem | PRs, Telegram |
-| `github/pr_manager` | GitHub API | File modifications |
+| `agent/tools` | `gh/repo_manager`, `sandbox/e2b_runner` | LLM, Telegram |
+| `gh/repo_manager` | Git, filesystem | PRs, Telegram |
+| `gh/pr_manager` | GitHub API | File modifications |
 | `sandbox/e2b_runner` | E2B API | Persistence, Telegram |
 | `memory/store` | ChromaDB | Agents, Telegram |
 
@@ -78,12 +78,12 @@ User (Telegram)
     → bot/commands.py (parse command)
       → agent/orchestrator.py (agentic loop)
         → agent/tools.py (dispatch)
-          → github/repo_manager.py (read/write files)
+          → gh/repo_manager.py (read/write files)
           → sandbox/e2b_runner.py (run tests)
           → memory/store.py (retrieve lessons)
         → checkpoints/ (save state after each tool call)
       ← agent returns diff summary
     ← bot asks user to approve/reject
-  → on approval: github/pr_manager.py opens PR
+  → on approval: gh/pr_manager.py opens PR
   ← PR URL sent back to user
 ```
