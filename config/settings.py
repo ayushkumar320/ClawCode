@@ -48,6 +48,9 @@ class Settings:
     checkpoint_dir: Path
     chroma_dir: Path
     max_test_retries: int
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "clawcode"
     components: tuple[str, ...] = field(default=("groq", "telegram", "github", "e2b"), repr=False)
 
     def verify(self) -> str:
@@ -71,6 +74,9 @@ def load() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         checkpoint_dir=Path(os.getenv("CHECKPOINT_DIR", "./checkpoints")),
         chroma_dir=Path(os.getenv("CHROMA_DIR", "./chroma_data")),
+        langsmith_tracing=os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true",
+        langsmith_api_key=os.getenv("LANGCHAIN_API_KEY", ""),
+        langsmith_project=os.getenv("LANGCHAIN_PROJECT", "clawcode"),
         max_test_retries=int(os.getenv("MAX_TEST_RETRIES", "3")),
     )
 

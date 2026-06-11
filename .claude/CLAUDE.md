@@ -8,7 +8,9 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 
 | Component | Tool | Version | Reason |
 |---|---|---|---|
-| LLM | Groq `qwen/qwen3-32b` | API | Free, native tool calling, `reasoning_effort` toggle |
+| LLM | Groq `qwen/qwen3-32b` via `langchain-groq` | 1.x | Native tool calling, `reasoning_effort` toggle, LangSmith-traceable |
+| Agent runtime | **LangGraph** (`StateGraph` + `ToolNode`) | 1.x | Explicit graph topology, checkpointer protocol, Studio-compatible |
+| Observability | **LangSmith** (`LANGCHAIN_TRACING_V2=true`) + **LangGraph Studio** (`langgraph dev`) | latest | Trace replay, node-level inspection, run search |
 | Telegram | `python-telegram-bot` | 21.x | Async, mature, webhook + polling |
 | GitHub API | `PyGithub` | 2.3+ | PR + repo management |
 | Git ops | `GitPython` | 3.1+ | Local branch/commit/push |
@@ -116,8 +118,10 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 | `bot/handler.py` | PTB `Application` setup, routes updates | Call GitHub/E2B directly |
 | `bot/commands.py` | Command callbacks, calls orchestrator | Implement agent logic |
 | `bot/keyboards.py` | Inline keyboards (approve/reject) | Hold state |
-| `agent/orchestrator.py` | Agentic loop, Groq calls, checkpointing | Touch Telegram or GitHub APIs directly |
-| `agent/tools.py` | Tool schemas + dispatch to managers | Contain LLM calls |
+| `agent/orchestrator.py` | LangGraph `StateGraph` + compiled `graph` + `run_task`; exposes graph for Studio | Touch Telegram or GitHub APIs directly |
+| `agent/tools.py` | LangChain `@tool` definitions delegating to `gh` / `sandbox` | Contain LLM calls |
+| `agent/llm.py` | ChatGroq factory: model + tools binding | Hold per-task state |
+| `langgraph.json` | Studio entry point; pins graph path + env file | Embed secrets |
 | `agent/memory.py` | Lesson save/retrieve via store | Embed Telegram concerns |
 | `gh/repo_manager.py` | Clone, read, write, branch, commit, push | Open PRs |
 | `gh/pr_manager.py` | Open/update PRs, post comments | Modify files |
@@ -125,56 +129,44 @@ Telegram-controlled autonomous coding agent. User sends a task via Telegram → 
 | `memory/store.py` | ChromaDB collection wrapper | Know about agents |
 | `checkpoints/` | JSON snapshots of agent state | Be committed to git |
 
-## 7. Agent Loop Specification
+## 7. Agent Loop Specification (LangGraph)
 
-Implement in `agent/orchestrator.py` exactly:
+The agent is a `langgraph.StateGraph` compiled at module scope in `agent/orchestrator.py` and exposed as `graph` for LangGraph Studio (`langgraph dev` reads `langgraph.json` → `agent.orchestrator:graph`).
+
+**Topology**
 
 ```
-async def run_task(task_id, repo, user_prompt):
-    state = load_checkpoint(task_id) or new_state(task_id, repo, user_prompt)
-    messages = state.messages or build_initial_messages(repo, user_prompt, recall_lessons(repo))
-    retries = state.retries  # consecutive failed test runs
-    effort = classify_effort(user_prompt)  # "none" | "default"
-
-    while True:
-        response = await groq.chat(
-            model="qwen/qwen3-32b",
-            messages=messages,
-            tools=TOOL_SCHEMAS,
-            reasoning_effort=effort,
-        )
-        messages.append(response.message)
-
-        if not response.tool_calls:
-            messages.append(system("You must call a tool or task_complete."))
-            continue
-
-        for call in response.tool_calls:
-            result = await dispatch_tool(call, repo, sandbox)
-            messages.append(tool_msg(call.id, result))
-            state.messages = messages
-            save_checkpoint(state)
-
-            if call.name == "run_tests":
-                if result.exit_code == 0:
-                    retries = 0
-                else:
-                    retries += 1
-                    if retries > 3:
-                        return abort(task_id, "max retries exceeded")
-
-            if call.name == "task_complete":
-                approved = await request_telegram_approval(task_id, diff_summary())
-                if not approved:
-                    return abort(task_id, "user rejected")
-                branch = await push_branch(repo, task_id)
-                pr_url = await open_pr(repo, branch, result.summary)
-                save_lesson(repo, result.lesson)
-                clear_checkpoint(task_id)
-                return pr_url
+   ┌──────┐                              ┌──────────┐
+   │ chat │──tool_calls?──no──► nudge ──►│   chat   │ (loop)
+   └───┬──┘                              └──────────┘
+       │ yes
+       ▼
+   ┌──────┐
+   │ tools│  (langgraph.prebuilt.ToolNode over agent.tools.TOOLS)
+   └───┬──┘
+       │
+       ▼
+   ┌─────────┐  retries > max ──► abort (raises MaxRetriesExceeded) ──► END
+   │post_tools│  task_complete? ──► finalize ─► approval gate ─► publish ─► END
+   └─────────┘  otherwise       ──► chat
 ```
 
-Rules: never mutate `messages` outside the loop; checkpoint after **every** tool result; `task_complete` is the only termination path besides abort.
+**Nodes**
+- `chat` — invokes `langchain_groq.ChatGroq(...).bind_tools(TOOLS)`; appends an `AIMessage`.
+- `tools` — `ToolNode(TOOLS)`. Each `@tool` reads `repo`, `sandbox`, `e2b_api_key` from `config.configurable`.
+- `post_tools` — scans the latest `ToolMessage` batch; updates `state["retries"]` based on `run_tests` exit code.
+- `nudge` — appends a `SystemMessage` telling the model to actually call a tool.
+- `finalize` — pulls `summary` / `lesson` from the `task_complete` `ToolMessage`, calls `config.configurable.approval`; on `False` raises `UserRejected`; on `True` calls `config.configurable.publish` and returns the PR URL.
+- `abort` — raises `MaxRetriesExceeded` when `state["retries"] > max_retries`.
+
+**Public API** — `agent.orchestrator.run_task(task_id, repo_slug, user_prompt, deps: OrchestratorDeps) -> str` builds the model, constructs initial messages, invokes the graph with `config={"configurable": {...}, "tags": [...]}`, and always tears the sandbox down in `finally`. The graph itself is stateless; `OrchestratorDeps` carries `setup`, `teardown`, `publish`, `approval`, `groq_api_key`, `e2b_api_key`, `max_retries`, `model`.
+
+**Observability** — LangSmith tracing engages automatically when `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` are set. Every node + tool call shows up in the LangSmith project named by `LANGCHAIN_PROJECT` (default `clawcode`). Studio (`uv run langgraph dev`) renders the live graph and lets you replay runs from any checkpoint.
+
+**Invariants** — preserved verbatim from the original loop spec:
+- `task_complete` is the **only** successful termination path; PR open is gated by `approval`.
+- Checkpoint is written after **every** tool result (Phase 5 wraps our atomic JSON store as a `BaseCheckpointSaver`; until then `MemorySaver` is used for graph-internal state; the public `/resume` path still uses `agent.checkpoints`).
+- LLM output is untrusted — tool args validated by each `@tool`'s pydantic schema (`extra="forbid"`).
 
 ## 8. Environment Variables
 
@@ -200,6 +192,12 @@ LOG_LEVEL=INFO
 CHECKPOINT_DIR=./checkpoints
 CHROMA_DIR=./chroma_data
 MAX_TEST_RETRIES=3
+
+# LangSmith (optional — enables tracing + Studio replay)
+LANGCHAIN_TRACING_V2=false
+LANGCHAIN_API_KEY=
+LANGCHAIN_PROJECT=clawcode
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
 ```
 
 `settings.py` must raise on startup if any non-runtime key is missing.
@@ -235,6 +233,6 @@ Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update
 
 ```
 Current Phase: Phase 5 — Memory + Voice
-Last completed milestone: Phase 4 (agent/{exceptions,state,checkpoints,tools,llm,orchestrator}; Groq tool-calling loop with retries cap, approval gate, atomic checkpoints; 33 tests; 96% coverage)
-Next action: Build memory/store.py + agent/memory.py + bot/voice.py + /resume + tests per docs/current-phase.md.
+Last completed milestone: Phase 4 (LangGraph orchestrator: StateGraph nodes chat/tools/post_tools/nudge/finalize/abort; LangChain @tool + ChatGroq; LangSmith tracing + Studio entry; 90 tests; 96% coverage)
+Next action: Build memory/store.py + agent/memory.py + bot/voice.py + /resume + JSON-backed BaseCheckpointSaver per docs/current-phase.md.
 ```

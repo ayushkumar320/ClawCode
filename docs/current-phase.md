@@ -58,6 +58,21 @@ cp .env.example .env    # then fill in real values
 uv run python main.py
 ```
 
+### LangGraph Studio + LangSmith
+
+```bash
+# 1. Get a key at https://smith.langchain.com → API Keys
+# 2. Set in .env:
+#    LANGCHAIN_TRACING_V2=true
+#    LANGCHAIN_API_KEY=ls_...
+#    LANGCHAIN_PROJECT=clawcode
+
+# Launch Studio (opens browser, watches agent/orchestrator.py:graph)
+uv run langgraph dev
+```
+
+Studio reads `langgraph.json` at repo root. Every node + tool call streams to LangSmith under the project name. Disable tracing by unsetting or flipping `LANGCHAIN_TRACING_V2=false`.
+
 ---
 
 ## Phase ledger
@@ -68,7 +83,7 @@ uv run python main.py
 | 1 — Telegram Skeleton | ✅ done | handler/commands/keyboards + 24 bot tests green |
 | 2 — GitHub Tools | ✅ done | gh/{repo_manager,pr_manager,exceptions}; 19 new tests; 93% coverage |
 | 3 — E2B Sandbox | ✅ done | sandbox/{e2b_runner,exceptions}; RunResult, timeout, scrub, truncate, idempotent shutdown; 18 new tests; 95% coverage |
-| 4 — Agent Brain | ✅ done | agent/{exceptions,state,checkpoints,tools,llm,orchestrator}; loop with retries, approval gate, atomic checkpoints; 33 new tests; 96% coverage |
+| 4 — Agent Brain | ✅ done | LangGraph `StateGraph` (chat→tools→post_tools→{chat\|finalize\|abort}); LangChain `@tool`s, ChatGroq, LangSmith tracing, Studio entry at `langgraph.json`; 90 tests; 96% coverage |
 | 5 — Memory + Voice | 🔨 **in progress** | this doc |
 | 6 — Polish + Deploy | ⏳ | Railway, tenacity, CI→Telegram |
 
