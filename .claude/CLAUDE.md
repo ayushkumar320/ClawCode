@@ -234,7 +234,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 3 — E2B Sandbox
-Last completed milestone: Phase 2 (gh.repo_manager + gh.pr_manager + exceptions; clone/list/read/write/branch/commit/push + idempotent open_pr; 19 tests; 93% coverage)
-Next action: Build sandbox/e2b_runner.py + sandbox/exceptions.py + tests/test_e2b_runner.py per docs/current-phase.md.
+Current Phase: Phase 4 — Agent Brain
+Last completed milestone: Phase 3 (sandbox.e2b_runner async wrapper; RunResult, timeout, scrub, output cap, idempotent shutdown; 18 tests; 95% coverage)
+Next action: Build agent/{exceptions,state,checkpoints,tools,orchestrator}.py + tests per docs/current-phase.md.
 ```
