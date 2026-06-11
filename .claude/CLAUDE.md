@@ -234,7 +234,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 4 — Agent Brain
-Last completed milestone: Phase 3 (sandbox.e2b_runner async wrapper; RunResult, timeout, scrub, output cap, idempotent shutdown; 18 tests; 95% coverage)
-Next action: Build agent/{exceptions,state,checkpoints,tools,orchestrator}.py + tests per docs/current-phase.md.
+Current Phase: Phase 5 — Memory + Voice
+Last completed milestone: Phase 4 (agent/{exceptions,state,checkpoints,tools,llm,orchestrator}; Groq tool-calling loop with retries cap, approval gate, atomic checkpoints; 33 tests; 96% coverage)
+Next action: Build memory/store.py + agent/memory.py + bot/voice.py + /resume + tests per docs/current-phase.md.
 ```
