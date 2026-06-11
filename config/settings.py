@@ -1,4 +1,5 @@
 """Typed runtime settings loaded from environment."""
+
 from __future__ import annotations
 
 import logging
@@ -47,9 +48,7 @@ class Settings:
     checkpoint_dir: Path
     chroma_dir: Path
     max_test_retries: int
-    components: tuple[str, ...] = field(
-        default=("groq", "telegram", "github", "e2b"), repr=False
-    )
+    components: tuple[str, ...] = field(default=("groq", "telegram", "github", "e2b"), repr=False)
 
     def verify(self) -> str:
         """Return a human-readable OK summary; raises if anything is missing."""
@@ -65,9 +64,7 @@ def load() -> Settings:
     return Settings(
         groq_api_key=os.environ["GROQ_API_KEY"],
         telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
-        telegram_allowed_user_ids=_parse_user_ids(
-            os.environ["TELEGRAM_ALLOWED_USER_IDS"]
-        ),
+        telegram_allowed_user_ids=_parse_user_ids(os.environ["TELEGRAM_ALLOWED_USER_IDS"]),
         github_token=os.environ["GITHUB_TOKEN"],
         github_default_branch=os.getenv("GITHUB_DEFAULT_BRANCH", "main"),
         e2b_api_key=os.environ["E2B_API_KEY"],

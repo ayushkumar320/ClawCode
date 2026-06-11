@@ -1,14 +1,16 @@
-"""Entry point. Verifies configuration; bot wiring lands in Phase 1."""
+"""Entry point: load settings, configure logging, start the Telegram bot."""
+
 from __future__ import annotations
 
 import logging
 import sys
 
+from bot.handler import build_application
 from config.settings import SettingsError, get
 
 
 def main() -> int:
-    """Load settings, configure logging, print verification status."""
+    """Boot the bot in long-polling mode; return non-zero on config error."""
     try:
         cfg = get()
     except SettingsError as exc:
@@ -20,7 +22,12 @@ def main() -> int:
         level=cfg.log_level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
-    logging.getLogger(__name__).info(cfg.verify())
+    log = logging.getLogger(__name__)
+    log.info(cfg.verify())
+
+    app = build_application(cfg)
+    log.info("starting Telegram long-polling")
+    app.run_polling()
     return 0
 
 

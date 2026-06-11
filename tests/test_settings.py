@@ -1,10 +1,10 @@
 """Tests for config.settings loading and validation."""
+
 from __future__ import annotations
 
 import importlib
 
 import pytest
-
 
 _ENV = {
     "GROQ_API_KEY": "g",

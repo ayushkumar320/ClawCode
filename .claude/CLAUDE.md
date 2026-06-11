@@ -234,7 +234,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 1 — Telegram Skeleton
-Last completed milestone: Phase 0 (settings + uv + CI green)
-Next action: Build bot/handler.py, bot/commands.py, bot/keyboards.py and tests/test_bot.py per docs/current-phase.md.
+Current Phase: Phase 2 — GitHub Tools
+Last completed milestone: Phase 1 (PTB skeleton; /repo, /status, /history, /cancel, echo, allowlist; 24 tests green)
+Next action: Build github/repo_manager.py, github/pr_manager.py, github/exceptions.py + tests per docs/current-phase.md.
 ```

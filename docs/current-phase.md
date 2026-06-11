@@ -4,37 +4,41 @@
 
 ---
 
-## Now building: Phase 1 — Telegram Skeleton
+## Now building: Phase 2 — GitHub Tools
 
-**Goal:** Bot online, command routing works, no agent logic yet.
+**Goal:** Standalone repo manipulation — clone, read, write, branch, commit, push, open PR — no agent involved.
 
 **Create / modify**
-- `bot/handler.py` — PTB `Application` setup, update routing, user allowlist enforcement.
-- `bot/commands.py` — command callbacks (`/start`, `/repo <url>`, `/status`, `/history`, `/cancel`); free text echoes back.
-- `bot/keyboards.py` — inline keyboards (stub; real approve/reject lands Phase 4).
-- `main.py` — wire `bot.handler` into the entry point after `Settings` loads.
-- `tests/test_bot.py` — PTB test harness coverage of command dispatch + allowlist.
+- `github/repo_manager.py` — `clone_repo`, `list_files`, `read_file`, `create_branch`, `write_file`, `commit`, `push_branch`. Local Git ops via `GitPython`; remote auth via `GITHUB_TOKEN`.
+- `github/pr_manager.py` — `open_pr` (idempotent: if a PR with the same head branch is already open, return its URL). Uses `PyGithub`.
+- `github/exceptions.py` — `RepoError`, `PRError` typed exceptions.
+- `tests/test_repo_manager.py`, `tests/test_pr_manager.py` — unit tests against a temp `git init --bare` upstream + temp working clone. Integration test against a real sandbox repo is `@pytest.mark.integration`.
 
 **Out of scope (do NOT touch yet)**
-- GitHub API, E2B sandbox, Groq calls, ChromaDB, voice. Those are Phases 2–5.
-- Real PR/approval flow — keyboards are stubs.
+- Bot/agent wiring of these tools — Phase 4 hooks them in.
+- E2B sandbox, ChromaDB, Groq.
+- Direct file writes from agent logic.
+
+**Hard guards (encode in code, not just comments)**
+- `create_branch` must reject `main` and `GITHUB_DEFAULT_BRANCH`.
+- `push_branch` must refuse to push to a protected branch name.
+- Never log `GITHUB_TOKEN`. Inject via remote URL rewrite; scrub from error messages.
 
 **Milestone**
-- `uv run python main.py` starts the bot in long-polling mode.
-- Sending `/repo https://github.com/x/y` → bot replies `Repo set: x/y` (held in in-memory per-user state, not persisted yet).
-- `/status` returns `idle`.
-- Non-allowlisted user IDs are silently dropped (logged at INFO).
+- A script (or test) creates branch `agent/test`, writes `HELLO.md`, commits, pushes, opens a PR against a designated sandbox repo, returns the PR URL. Re-running is idempotent (no duplicate PR).
 
 **Tests**
-- `uv run pytest tests/test_bot.py -v`
-- Must cover: command dispatch, allowlist enforcement (allowed + denied), `/repo` URL parsing (valid + malformed), keyboard callback parsing stub.
+- `uv run pytest tests/test_repo_manager.py tests/test_pr_manager.py -v`
+- Unit coverage: clone, list/read/write, branch creation (including reject-protected), commit author/email, idempotent PR.
+- Integration test marked `@pytest.mark.integration`, skipped unless `RUN_INTEGRATION=1`.
 
 **Definition of done**
-- All Phase 0 tests still pass.
+- All prior tests still pass.
 - New tests pass.
 - `uv run ruff check .` and `uv run black --check .` clean.
-- This file updated to point at Phase 2.
-- CLAUDE.md §11 updated: `Current Phase: Phase 1` → `Phase 2`, milestone recorded.
+- Coverage ≥ 60% (Phase 2 gate from CLAUDE.md §9).
+- This file updated to point at Phase 3.
+- CLAUDE.md §11 snapshot updated.
 
 ---
 
@@ -54,8 +58,8 @@ uv run python main.py
 | Phase | Status | Notes |
 |---|---|---|
 | 0 — Environment Setup | ✅ done | Settings, .env.example, uv, CI, test_settings green |
-| 1 — Telegram Skeleton | 🔨 **in progress** | this doc |
-| 2 — GitHub Tools | ⏳ next | |
+| 1 — Telegram Skeleton | ✅ done | handler/commands/keyboards + 24 bot tests green |
+| 2 — GitHub Tools | 🔨 **in progress** | this doc |
 | 3 — E2B Sandbox | ⏳ | |
 | 4 — Agent Brain | ⏳ | |
 | 5 — Memory + Voice | ⏳ | |
