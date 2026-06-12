@@ -48,6 +48,8 @@ class Settings:
     checkpoint_dir: Path
     chroma_dir: Path
     max_test_retries: int
+    groq_model: str = "qwen/qwen3-32b"
+    groq_fallback_models: tuple[str, ...] = ()
     langsmith_tracing: bool = False
     langsmith_api_key: str = ""
     langsmith_project: str = "clawcode"
@@ -78,6 +80,15 @@ def load() -> Settings:
         langsmith_api_key=os.getenv("LANGCHAIN_API_KEY", ""),
         langsmith_project=os.getenv("LANGCHAIN_PROJECT", "clawcode"),
         max_test_retries=int(os.getenv("MAX_TEST_RETRIES", "3")),
+        groq_model=os.getenv("GROQ_MODEL", "qwen/qwen3-32b"),
+        groq_fallback_models=tuple(
+            m.strip()
+            for m in os.getenv(
+                "GROQ_FALLBACK_MODELS",
+                "llama-3.3-70b-versatile,llama-3.1-8b-instant",
+            ).split(",")
+            if m.strip()
+        ),
     )
 
 

@@ -8,7 +8,7 @@ and ``LANGCHAIN_API_KEY`` are present in the environment — see
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Sequence
 
 from langchain_groq import ChatGroq
 
@@ -17,7 +17,24 @@ from agent.tools import TOOLS
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "qwen/qwen3-32b"
+DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+)
 DEFAULT_TIMEOUT_S = 60
+
+
+def _build_one(
+    *, api_key: str, model: str, timeout_s: float, reasoning_effort: str
+) -> Any:
+    """Construct a single ChatGroq instance with retry + tools bound."""
+    base = ChatGroq(
+        model=model,
+        api_key=api_key,
+        timeout=timeout_s,
+        reasoning_effort=reasoning_effort,
+    ).with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
+    return base.bind_tools(list(TOOLS))
 
 
 def build_chat_model(
@@ -26,12 +43,26 @@ def build_chat_model(
     model: str = DEFAULT_MODEL,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     reasoning_effort: str = "default",
+    fallback_models: Sequence[str] = DEFAULT_FALLBACK_MODELS,
 ) -> Any:
-    """Return a ChatGroq model bound to the agent toolset, ready for the graph."""
-    base = ChatGroq(
-        model=model,
+    """Return primary ChatGroq with tool-bound fallbacks for resilience."""
+    primary = _build_one(
         api_key=api_key,
-        timeout=timeout_s,
+        model=model,
+        timeout_s=timeout_s,
         reasoning_effort=reasoning_effort,
-    ).with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
-    return base.bind_tools(list(TOOLS))
+    )
+    fallbacks = [
+        _build_one(
+            api_key=api_key,
+            model=fb,
+            timeout_s=timeout_s,
+            reasoning_effort=reasoning_effort,
+        )
+        for fb in fallback_models
+        if fb and fb != model
+    ]
+    if not fallbacks:
+        return primary
+    logger.info("chat model %s with fallbacks=%s", model, list(fallback_models))
+    return primary.with_fallbacks(fallbacks)

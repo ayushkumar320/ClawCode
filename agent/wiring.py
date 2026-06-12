@@ -103,6 +103,8 @@ def compose_deps(
         groq_api_key=settings.groq_api_key,
         e2b_api_key=settings.e2b_api_key,
         max_retries=settings.max_test_retries,
+        model=settings.groq_model,
+        fallback_models=settings.groq_fallback_models,
         recall_lessons=recall,
         save_lesson=save,
     )

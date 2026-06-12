@@ -47,6 +47,7 @@ class OrchestratorDeps:
     e2b_api_key: str | None = None
     max_retries: int = 3
     model: str = "qwen/qwen3-32b"
+    fallback_models: tuple[str, ...] = ()
     recall_lessons: RecallFn | None = None
     save_lesson: SaveLessonFn | None = None
 
@@ -248,6 +249,7 @@ async def run_task(
     model = build_chat_model(
         api_key=deps.groq_api_key,
         model=deps.model,
+        fallback_models=deps.fallback_models,
         reasoning_effort=classify_effort(user_prompt),
     )
     lessons_block = ""
