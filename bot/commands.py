@@ -147,6 +147,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     if query is None or query.data is None:
         return
+    logger.info("on_callback fired: data=%r from user=%s", query.data, query.from_user.id if query.from_user else "?")
     bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
     gate = bot_data.get("approval_gate")
     secret = bot_data.get("hmac_secret", "")
