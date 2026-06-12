@@ -12,16 +12,16 @@ def _fake_chatgroq_factory():
     instances = []
 
     def factory(**kwargs):
-        retried = MagicMock(name=f"retried-{kwargs['model']}")
         bound = MagicMock(name=f"bound-{kwargs['model']}")
-        bound.model = kwargs["model"]
-        bound.with_fallbacks = MagicMock(
-            side_effect=lambda fbs: ("with_fallbacks", bound, tuple(fbs))
+        retried = MagicMock(name=f"retried-{kwargs['model']}")
+        retried.model = kwargs["model"]
+        retried.with_fallbacks = MagicMock(
+            side_effect=lambda fbs: ("with_fallbacks", retried, tuple(fbs))
         )
-        retried.bind_tools = MagicMock(return_value=bound)
+        bound.with_retry = MagicMock(return_value=retried)
         inst = MagicMock(name=f"inst-{kwargs['model']}")
-        inst.with_retry = MagicMock(return_value=retried)
-        instances.append((kwargs, inst, bound))
+        inst.bind_tools = MagicMock(return_value=bound)
+        instances.append((kwargs, inst, retried))
         return inst
 
     return factory, instances
@@ -34,9 +34,9 @@ def test_build_chat_model_single_when_no_fallbacks(monkeypatch) -> None:
     out = llm.build_chat_model(
         api_key="k", model="m", reasoning_effort="none", timeout_s=5, fallback_models=()
     )
-    assert out is instances[0][2]  # the single bound model, no with_fallbacks wrap
+    assert out is instances[0][2]  # the retry-wrapped model, no with_fallbacks wrap
     assert len(instances) == 1
-    instances[0][1].with_retry.assert_called_once()
+    instances[0][1].bind_tools.assert_called_once()
 
 
 def test_build_chat_model_wraps_with_fallbacks(monkeypatch) -> None:
@@ -51,10 +51,10 @@ def test_build_chat_model_wraps_with_fallbacks(monkeypatch) -> None:
     # Three ChatGroq builds: primary + two fallbacks
     models_built = [kw["model"] for kw, _, _ in instances]
     assert models_built == ["primary", "fb1", "fb2"]
-    # Returned object is the with_fallbacks tuple emitted by the primary's bound mock
-    tag, bound_primary, fbs = out
+    # Returned object is the with_fallbacks tuple emitted by the primary's retried mock
+    tag, primary_retried, fbs = out
     assert tag == "with_fallbacks"
-    assert bound_primary.model == "primary"
+    assert primary_retried.model == "primary"
     assert tuple(b.model for b in fbs) == ("fb1", "fb2")
 
 

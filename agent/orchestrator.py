@@ -14,7 +14,6 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict
@@ -209,7 +208,13 @@ class _ConfigSchema(TypedDict, total=False):
 
 
 def _build_graph() -> Any:
-    """Wire up nodes + conditional edges and compile with an in-memory checkpointer."""
+    """Wire up nodes + conditional edges and compile the graph.
+
+    No checkpointer is attached at module scope: LangGraph Studio
+    (``langgraph dev``) refuses graphs that bring their own checkpointer and
+    the platform provides one automatically. For local ``run_task`` calls the
+    graph runs in a single ``ainvoke`` per task — no persistence needed.
+    """
     g: StateGraph = StateGraph(GraphState, context_schema=_ConfigSchema)
     g.add_node("chat", chat_node)
     g.add_node("tools", ToolNode(list(TOOLS)))
@@ -229,7 +234,7 @@ def _build_graph() -> Any:
     )
     g.add_edge("finalize", END)
     g.add_edge("abort", END)
-    return g.compile(checkpointer=MemorySaver())
+    return g.compile()
 
 
 graph = _build_graph()

@@ -119,7 +119,7 @@ async def install_deps(
 ) -> RunResult:
     """Install dependencies inside the sandbox. Prefers ``uv``, falls back to pip."""
     cmd = (
-        f"cd {remote_dir} && "
+        f"mkdir -p {remote_dir} && cd {remote_dir} && "
         "(uv sync --frozen 2>/dev/null || "
         "pip install -r requirements.txt 2>/dev/null || true)"
     )

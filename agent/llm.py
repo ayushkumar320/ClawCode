@@ -27,13 +27,13 @@ DEFAULT_TIMEOUT_S = 60
 
 def _build_one(*, api_key: str, model: str, timeout_s: float, reasoning_effort: str) -> Any:
     """Construct a single ChatGroq instance with retry + tools bound."""
-    base = ChatGroq(
+    bound = ChatGroq(
         model=model,
         api_key=api_key,
         timeout=timeout_s,
         reasoning_effort=reasoning_effort,
-    ).with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
-    return base.bind_tools(list(TOOLS))
+    ).bind_tools(list(TOOLS))
+    return bound.with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
 
 
 def build_chat_model(
