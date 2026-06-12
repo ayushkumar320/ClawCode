@@ -6,12 +6,19 @@ import asyncio
 import logging
 
 from github import Github, GithubException
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from gh.exceptions import PRError
 
 logger = logging.getLogger(__name__)
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=1),
+    retry=retry_if_exception_type(PRError),
+    reraise=True,
+)
 async def open_pr(
     slug: str,
     *,

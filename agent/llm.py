@@ -33,5 +33,5 @@ def build_chat_model(
         api_key=api_key,
         timeout=timeout_s,
         reasoning_effort=reasoning_effort,
-    )
+    ).with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
     return base.bind_tools(list(TOOLS))

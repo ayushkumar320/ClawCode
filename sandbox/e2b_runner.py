@@ -14,8 +14,15 @@ from pathlib import Path
 from typing import Any
 
 from e2b_code_interpreter import AsyncSandbox  # type: ignore[import-not-found]
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from sandbox.exceptions import SandboxError, SandboxTimeoutError
+
+
+def _is_transient_sandbox_error(exc: BaseException) -> bool:
+    """Retry on generic SandboxError but never on a timeout."""
+    return isinstance(exc, SandboxError) and not isinstance(exc, SandboxTimeoutError)
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,12 @@ def _truncate(text: str) -> str:
     return text[:keep] + _TRUNCATED_MARK
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=1),
+    retry=retry_if_exception(_is_transient_sandbox_error),
+    reraise=True,
+)
 async def start_sandbox(api_key: str, *, timeout_s: int = 300) -> Any:
     """Create a fresh E2B sandbox. Returns the SDK's sandbox handle."""
     if not api_key:
@@ -113,6 +126,12 @@ async def install_deps(
     return await _run(sandbox, cmd, timeout_s=timeout_s, op="install_deps", api_key=api_key)
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=1),
+    retry=retry_if_exception(_is_transient_sandbox_error),
+    reraise=True,
+)
 async def run_pytest(
     sandbox: Any,
     *,

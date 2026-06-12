@@ -9,6 +9,7 @@ from telegram import Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -45,6 +46,7 @@ def build_application(settings: Settings) -> Application:
     app.add_handler(CommandHandler("resume", commands.resume, filters=allow))
     app.add_handler(MessageHandler(allow & filters.VOICE, commands.voice))
     app.add_handler(MessageHandler(allow & filters.TEXT & ~filters.COMMAND, commands.echo))
+    app.add_handler(CallbackQueryHandler(commands.on_callback))
     app.add_handler(MessageHandler(~allow, _deny))
 
     logger.info(

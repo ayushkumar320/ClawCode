@@ -232,7 +232,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 6 — Polish + Deploy
-Last completed milestone: Phase 5 (memory.store ChromaDB wrapper; agent.memory sanitize/recall/remember with <lesson> tagging; bot/voice OGG→Whisper; /resume command + voice handler; orchestrator recall_lessons + save_lesson hooks; 122 tests; 95% coverage)
-Next action: Compose orchestrator deps in main.py, add JSON-backed BaseCheckpointSaver, wrap external calls with tenacity, write Procfile + railway.toml + CI→Telegram bridge per docs/current-phase.md.
+Current Phase: All planned phases done — maintenance / iteration
+Last completed milestone: Phase 6 (agent.wiring.compose_deps; bot.approval ApprovalGate + HMAC-signed callback_data; tenacity wraps on Groq/E2B/GitHub; main.py end-to-end dispatch/resume/voice/approval wiring; Procfile + railway.toml + notify.yml; 138 tests; 93% coverage)
+Next action: Deploy to Railway and verify one live PR end-to-end; track open follow-ups in docs/current-phase.md (JSON-backed BaseCheckpointSaver, LANGCHAIN_PROJECT grouping).
 ```

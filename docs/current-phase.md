@@ -4,7 +4,26 @@
 
 ---
 
-## Now building: Phase 6 — Polish + Deploy
+## Now building: Maintenance / iteration
+
+All six planned phases are done. The bot wires end-to-end locally; deployment
+to Railway is a one-step operation (push to a connected repo, set the env
+vars from [.env.example](../.env.example) under Railway → Variables, done).
+
+**Open follow-ups (none blocking):**
+- Replace the in-graph `MemorySaver` with a JSON-backed `BaseCheckpointSaver`
+  so LangGraph natively resumes mid-tool-call instead of the bot dispatching
+  a fresh run with saved messages. The protocol is non-trivial (channel
+  versions, pending writes). Track as `# TODO(ayush, 2026-06-12)`.
+- Verify Railway deploy + live PR end-to-end once the operator's GitHub
+  fine-grained token is provisioned.
+- Wire a `LANGCHAIN_PROJECT` env into the Studio launch command so traces
+  group sensibly across local + Railway runs.
+
+Phase doc is no longer "in progress" — leave this file pointing at
+maintenance work until the next major scope lands.
+
+### Previously: Phase 6 — Polish + Deploy
 
 **Goal:** Production-ready: tenacity-wrapped external calls, Railway deploy, GitHub Actions → Telegram bridge, end-to-end wiring in `main.py` (orchestrator deps composed from real `LessonStore`, `transcribe_voice`, gh + sandbox callables).
 
@@ -85,6 +104,6 @@ Studio reads `langgraph.json` at repo root. Every node + tool call streams to La
 | 3 — E2B Sandbox | ✅ done | sandbox/{e2b_runner,exceptions}; RunResult, timeout, scrub, truncate, idempotent shutdown; 18 new tests; 95% coverage |
 | 4 — Agent Brain | ✅ done | LangGraph `StateGraph` (chat→tools→post_tools→{chat\|finalize\|abort}); LangChain `@tool`s, ChatGroq, LangSmith tracing, Studio entry at `langgraph.json`; 90 tests; 96% coverage |
 | 5 — Memory + Voice | ✅ done | memory/{store,exceptions}; agent/memory; bot/voice + /resume; lesson recall+save plumbed into orchestrator; 32 new tests; 95% coverage |
-| 6 — Polish + Deploy | 🔨 **in progress** | this doc |
+| 6 — Polish + Deploy | ✅ done | agent/wiring compose_deps; bot/approval gate + HMAC keyboards + CallbackQueryHandler; tenacity wraps on open_pr/push_branch/start_sandbox/run_pytest + ChatGroq.with_retry; main.py wires dispatch/resume/transcribe/approval into bot_data; Procfile + railway.toml + .github/workflows/notify.yml; 138 tests; 93% coverage |
 
 Full phase details: [build-plan.md](build-plan.md) and CLAUDE.md §5.

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from git import GitCommandError, Repo
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from gh.exceptions import ProtectedBranchError, RepoError
 
@@ -158,6 +159,17 @@ def _actor(name: str, email: str):  # noqa: ANN202 — Actor type leaks GitPytho
     return Actor(name, email)
 
 
+def _is_transient_repo_error(exc: BaseException) -> bool:
+    """Retry only on generic RepoError; never on permanent guard violations."""
+    return isinstance(exc, RepoError) and not isinstance(exc, ProtectedBranchError)
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=0.05, min=0.05, max=1),
+    retry=retry_if_exception(_is_transient_repo_error),
+    reraise=True,
+)
 async def push_branch(handle: RepoHandle, name: str, *, token: str | None = None) -> None:
     """Push the given branch to origin; reject protected names."""
     if name in handle.protected:

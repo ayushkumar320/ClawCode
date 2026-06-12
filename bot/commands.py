@@ -9,6 +9,8 @@ from typing import cast
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from bot import approval, keyboards
+
 logger = logging.getLogger(__name__)
 
 _REPO_URL_RE = re.compile(
@@ -104,7 +106,7 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     task_id = context.args[0]
     state = _user_state(context)
     state.setdefault("history", []).append(f"resume: {task_id}")
-    resume_fn = getattr(context.application, "bot_data", {}).get("resume_task")
+    resume_fn = getattr(getattr(context, "application", None), "bot_data", {}).get("resume_task")
     if resume_fn is None:
         await context.bot.send_message(
             chat_id=chat_id, text=f"Resume not wired yet (task {task_id})"
@@ -124,7 +126,9 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     voice_msg = update.effective_message.voice
     if voice_msg is None:
         return
-    transcribe_fn = getattr(context.application, "bot_data", {}).get("transcribe_voice")
+    transcribe_fn = getattr(getattr(context, "application", None), "bot_data", {}).get(
+        "transcribe_voice"
+    )
     if transcribe_fn is None:
         await context.bot.send_message(chat_id=chat_id, text="Voice not wired yet.")
         return
@@ -138,8 +142,46 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_message(chat_id=chat_id, text=f"transcript: {text}")
 
 
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Resolve a pending approval ``Future`` based on the operator's button press."""
+    query = update.callback_query
+    if query is None or query.data is None:
+        return
+    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
+    gate = bot_data.get("approval_gate")
+    secret = bot_data.get("hmac_secret", "")
+    if gate is None:
+        await query.answer("Approval gate not wired", show_alert=True)
+        return
+    try:
+        action, task_id = keyboards.parse_callback(query.data, hmac_secret=secret)
+    except ValueError:
+        logger.warning("rejected callback_data (bad/tampered)")
+        await query.answer("Invalid request", show_alert=True)
+        return
+    resolved = approval.resolve(gate, task_id, approved=action == keyboards.APPROVE_PREFIX)
+    await query.answer("Recorded" if resolved else "No pending request")
+
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo any free-text message back. Agent dispatch lands in Phase 4."""
+    """Dispatch free text as a task if wired; otherwise echo back."""
     assert update.effective_chat is not None and update.effective_message is not None
+    chat_id = update.effective_chat.id
     text = update.effective_message.text or ""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"echo: {text}")
+    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
+    dispatch = bot_data.get("dispatch_task")
+    state = _user_state(context)
+    repo_slug = state.get("repo")
+    if dispatch is None or not repo_slug:
+        await context.bot.send_message(chat_id=chat_id, text=f"echo: {text}")
+        return
+    state["status"] = "running"
+    try:
+        url = await dispatch(repo_slug, text, chat_id)
+        await context.bot.send_message(chat_id=chat_id, text=f"PR: {url}")
+    except Exception as exc:  # noqa: BLE001 — surface friendly error, not stack
+        logger.exception("task dispatch failed")
+        await context.bot.send_message(chat_id=chat_id, text=f"Task failed: {exc}")
+    finally:
+        state["status"] = "idle"
+        state.setdefault("history", []).append(f"task: {text[:50]}")

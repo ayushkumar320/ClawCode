@@ -1,0 +1,12 @@
+# Railway deployment configuration.
+# Single worker process; no HTTP — the bot uses long-polling, not webhooks.
+# Required env vars are listed in .env.example; set them via Railway → Variables.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uv run python main.py"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+healthcheckTimeout = 30

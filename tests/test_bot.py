@@ -156,35 +156,108 @@ async def test_voice_dispatch_happy_path() -> None:
     assert "transcript: say hi" in ctx.bot.send_message.await_args.kwargs["text"]
 
 
-async def test_echo_prefixes() -> None:
+async def test_echo_falls_back_when_unwired() -> None:
     upd, ctx = _update(text="hello"), _ctx()
     await commands.echo(upd, ctx)
     assert ctx.bot.send_message.await_args.kwargs["text"] == "echo: hello"
+
+
+async def test_echo_dispatches_when_wired() -> None:
+    upd, ctx = _update(text="add x"), _ctx()
+    ctx.user_data["repo"] = "o/r"
+    dispatch = AsyncMock(return_value="https://gh/pr/1")
+    ctx.application = SimpleNamespace(bot_data={"dispatch_task": dispatch})
+    await commands.echo(upd, ctx)
+    dispatch.assert_awaited_once_with("o/r", "add x", 42)
+    assert "https://gh/pr/1" in ctx.bot.send_message.await_args.kwargs["text"]
+    assert ctx.user_data["status"] == "idle"
+
+
+async def test_echo_dispatch_no_repo_falls_back() -> None:
+    upd, ctx = _update(text="hello"), _ctx()
+    ctx.application = SimpleNamespace(bot_data={"dispatch_task": AsyncMock()})
+    await commands.echo(upd, ctx)
+    assert ctx.bot.send_message.await_args.kwargs["text"] == "echo: hello"
+
+
+async def test_on_callback_resolves_pending_approval() -> None:
+    from bot import approval as approval_mod
+
+    gate = approval_mod.ApprovalGate()
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+    fut = loop.create_future()
+    gate.waiters["t-1"] = fut
+
+    kb = keyboards.approval_keyboard("t-1", hmac_secret="sec")
+    cb = kb.inline_keyboard[0][0].callback_data  # approve
+
+    query = SimpleNamespace(data=cb, answer=AsyncMock())
+    upd = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=1))
+    ctx = SimpleNamespace(
+        application=SimpleNamespace(bot_data={"approval_gate": gate, "hmac_secret": "sec"})
+    )
+    await commands.on_callback(upd, ctx)
+    assert fut.done() and fut.result() is True
+    query.answer.assert_awaited_once()
+
+
+async def test_on_callback_rejects_tampered_payload() -> None:
+    from bot import approval as approval_mod
+
+    gate = approval_mod.ApprovalGate()
+    query = SimpleNamespace(data="approve:t-1:badtag", answer=AsyncMock())
+    upd = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=1))
+    ctx = SimpleNamespace(
+        application=SimpleNamespace(bot_data={"approval_gate": gate, "hmac_secret": "sec"})
+    )
+    await commands.on_callback(upd, ctx)
+    query.answer.assert_awaited_once()
+    args = query.answer.await_args
+    assert "Invalid" in args.args[0]
 
 
 # ---------- Keyboards ----------
 
 
 def test_approval_keyboard_shape() -> None:
-    kb = keyboards.approval_keyboard("t-123")
+    kb = keyboards.approval_keyboard("t-123", hmac_secret="s")
     row = kb.inline_keyboard[0]
     assert [b.text for b in row] == ["Approve", "Reject"]
-    assert row[0].callback_data == "approve:t-123"
-    assert row[1].callback_data == "reject:t-123"
+    assert row[0].callback_data.startswith("approve:t-123:")
+    assert row[1].callback_data.startswith("reject:t-123:")
 
 
-@pytest.mark.parametrize(
-    "data,parsed",
-    [("approve:t-1", ("approve", "t-1")), ("reject:abc", ("reject", "abc"))],
-)
-def test_parse_callback_ok(data: str, parsed: tuple[str, str]) -> None:
-    assert keyboards.parse_callback(data) == parsed
+def test_parse_callback_round_trip() -> None:
+    kb = keyboards.approval_keyboard("t-1", hmac_secret="s")
+    for btn in kb.inline_keyboard[0]:
+        action, tid = keyboards.parse_callback(btn.callback_data, hmac_secret="s")
+        assert tid == "t-1"
+        assert action in ("approve", "reject")
 
 
-@pytest.mark.parametrize("bad", ["", "approve", "foo:bar", "approve:"])
-def test_parse_callback_bad(bad: str) -> None:
+def test_parse_callback_rejects_tamper() -> None:
+    kb = keyboards.approval_keyboard("t-1", hmac_secret="s")
+    good = kb.inline_keyboard[0][0].callback_data
+    # Tamper: swap approve→reject, keep the original tag
+    action, rest = good.split(":", 1)
+    tampered = "reject:" + rest
     with pytest.raises(ValueError):
-        keyboards.parse_callback(bad)
+        keyboards.parse_callback(tampered, hmac_secret="s")
+
+
+def test_parse_callback_rejects_wrong_secret() -> None:
+    kb = keyboards.approval_keyboard("t-1", hmac_secret="s")
+    cb = kb.inline_keyboard[0][0].callback_data
+    with pytest.raises(ValueError):
+        keyboards.parse_callback(cb, hmac_secret="other")
+
+
+@pytest.mark.parametrize("bad", ["", "approve", "foo:bar", "approve:t:bad:extra"])
+def test_parse_callback_malformed(bad: str) -> None:
+    with pytest.raises(ValueError):
+        keyboards.parse_callback(bad, hmac_secret="s")
 
 
 # ---------- Handler wiring ----------
@@ -225,5 +298,5 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
         max_test_retries=3,
     )
     app = build_application(cfg)
-    # 6 commands + 1 voice + 1 text echo + 1 deny = 9 handlers
-    assert len(app.handlers) == 9
+    # 6 commands + 1 voice + 1 text echo + 1 callback + 1 deny = 10 handlers
+    assert len(app.handlers) == 10
