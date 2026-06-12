@@ -232,7 +232,7 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
 
 ```
-Current Phase: Phase 5 — Memory + Voice
-Last completed milestone: Phase 4 (LangGraph orchestrator: StateGraph nodes chat/tools/post_tools/nudge/finalize/abort; LangChain @tool + ChatGroq; LangSmith tracing + Studio entry; 90 tests; 96% coverage)
-Next action: Build memory/store.py + agent/memory.py + bot/voice.py + /resume + JSON-backed BaseCheckpointSaver per docs/current-phase.md.
+Current Phase: Phase 6 — Polish + Deploy
+Last completed milestone: Phase 5 (memory.store ChromaDB wrapper; agent.memory sanitize/recall/remember with <lesson> tagging; bot/voice OGG→Whisper; /resume command + voice handler; orchestrator recall_lessons + save_lesson hooks; 122 tests; 95% coverage)
+Next action: Compose orchestrator deps in main.py, add JSON-backed BaseCheckpointSaver, wrap external calls with tenacity, write Procfile + railway.toml + CI→Telegram bridge per docs/current-phase.md.
 ```

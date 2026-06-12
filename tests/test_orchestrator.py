@@ -133,6 +133,39 @@ async def test_run_task_user_rejection(tmp_path: Path, monkeypatch) -> None:
     deps.teardown.assert_awaited_once()
 
 
+async def test_run_task_recalls_and_saves_lessons(tmp_path: Path, monkeypatch) -> None:
+    _patch_tools(monkeypatch)
+    _patch_chat(
+        monkeypatch,
+        [
+            _ai(
+                [
+                    {
+                        "id": "c1",
+                        "name": "task_complete",
+                        "args": {"summary": "ok", "lesson": "lesson body"},
+                    }
+                ]
+            )
+        ],
+    )
+    deps = _deps()
+    recall = AsyncMock(return_value="<lessons>\n<lesson>prior</lesson>\n</lessons>")
+    save = AsyncMock()
+    deps.recall_lessons = recall
+    deps.save_lesson = save
+    url = await orch.run_task("t-mem", "o/r", "add x", deps)
+    assert url == "https://gh/pr/1"
+    recall.assert_awaited_once_with("o/r", "add x")
+    save.assert_awaited_once_with("o/r", "lesson body")
+
+
+def test_build_initial_messages_includes_lessons() -> None:
+    msgs = orch.build_initial_messages("o/r", "do thing", "<lessons>x</lessons>")
+    assert len(msgs) == 3
+    assert "lessons" in msgs[1].content
+
+
 async def test_run_task_nudges_on_empty_turn(tmp_path: Path, monkeypatch) -> None:
     _patch_tools(monkeypatch)
     _patch_chat(

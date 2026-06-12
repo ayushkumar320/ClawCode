@@ -4,47 +4,47 @@
 
 ---
 
-## Now building: Phase 5 — Memory + Voice
+## Now building: Phase 6 — Polish + Deploy
 
-**Goal:** Persistent per-repo lessons, voice-note task input, crash-safe resume.
+**Goal:** Production-ready: tenacity-wrapped external calls, Railway deploy, GitHub Actions → Telegram bridge, end-to-end wiring in `main.py` (orchestrator deps composed from real `LessonStore`, `transcribe_voice`, gh + sandbox callables).
 
 **Create / modify**
-- `memory/store.py` — ChromaDB-backed collection wrapper. Methods: `add_lesson(repo_slug, text)`, `top_k(repo_slug, query, k=3)`. Collection name derived from `repo_slug`, isolated per repo.
-- `agent/memory.py` — orchestrator-facing helpers: `recall_lessons(repo_slug) -> str` (formatted block ready for system prompt) and `save_lesson(repo_slug, lesson)`. Caps lesson length and strips control characters (rule §5.8 — lessons are untrusted input).
-- `agent/orchestrator.py` — inject lessons into `build_initial_messages` (system prompt addition); call `save_lesson` from `_finalize` after a successful PR.
-- `bot/voice.py` — download a Telegram voice OGG, transcribe via Groq Whisper (`whisper-large-v3-turbo`), return text. Treat transcript as the user task message.
-- `bot/handler.py` + `bot/commands.py` — route voice messages through `bot.voice` and into the agent dispatch path; add `/resume <task_id>` that loads the latest checkpoint and continues.
-- Tests: `tests/test_memory_store.py`, `tests/test_agent_memory.py`, `tests/test_voice.py`, and resume coverage in `tests/test_orchestrator.py`.
+- `main.py` — compose `OrchestratorDeps`: real `setup`/`teardown` (clone + start sandbox + upload), real `publish` (push + open_pr), real `approval` (Telegram inline keyboard wait), `recall_lessons` / `save_lesson` bound to `memory.store.LessonStore`. Register `transcribe_voice` + a `resume_task` callable into `application.bot_data`.
+- `agent/checkpoint_saver.py` — JSON-backed `BaseCheckpointSaver` wrapping `agent/checkpoints.py` so the LangGraph picks up `/resume` natively. Replaces `MemorySaver` in `agent/orchestrator._build_graph`.
+- Add tenacity retry decorators to Groq (`agent/llm.py`), GitHub (`gh/repo_manager.push_branch`, `gh/pr_manager.open_pr`), E2B (`sandbox/e2b_runner.start_sandbox`, `run_pytest`) — exponential backoff, `max_attempts=3`, no infinite loops (rule §3.6).
+- `Procfile` + `railway.toml` at repo root — single worker process running `python main.py`.
+- `.github/workflows/notify.yml` — CI run-status webhook that POSTs to a Telegram bot endpoint.
+- `tests/test_checkpoint_saver.py` — minimal interface tests against the JSON checkpoint saver (mock the underlying `agent.checkpoints` module).
+- `tests/test_main_wiring.py` — smoke test that `main.compose_deps()` returns an `OrchestratorDeps` with all required callbacks set when real env vars are present.
 
-**Out of scope (do NOT touch yet)**
-- Railway deploy / Procfile / tenacity wrappers — Phase 6.
-- CI→Telegram bridge — Phase 6.
+**Out of scope**
+- Studio production deployment. Studio remains a dev tool only.
+- Multi-tenant secret isolation. Single operator per deployment.
 
 **Hard guards**
-- Lessons capped at e.g. 512 chars, control chars stripped, wrapped in `<lesson>...</lesson>` tags inside the system prompt so the model treats them as untrusted context.
-- ChromaDB collection name uses `repo_slug` only (sanitized); never write a lesson with empty text.
-- Voice download has a timeout and a max file size; transcription call has its own timeout.
-- Never log voice content at INFO+ — it's user input.
-- Embeddings model loaded once at process start (memoized inside `memory/store.py`), never per-request.
+- Tenacity wraps must have a hard ceiling on total wait time (e.g. `stop_after_delay(60)`) so we never block the loop indefinitely.
+- `compose_deps` raises `SettingsError` if any non-optional setting is missing, before the bot opens long-polling.
+- Telegram approval keyboard `callback_data` carries an HMAC over `task_id + action` to prevent spoofing if the bot ends up in a group.
+- Railway deploy never gets read access to a personal GitHub token. Use a deploy-scoped fine-grained token only.
 
 **Milestone**
-- Send a voice note "list files in src" → transcribed → echoed as a normal task message.
-- Run a task end-to-end, get PR, restart process, send another task → top-3 prior lessons appear in the system prompt of the second task.
-- Kill mid-task → `/resume <task_id>` finishes from the last checkpoint.
+- Deploy succeeds on Railway, `/start` works against the live bot.
+- End-to-end task from phone completes — clone → plan → write → tests → approval keyboard → PR opened → lesson saved → next task pulls it.
+- A failed GitHub Actions run on the agent's PR triggers a Telegram message with the run URL.
 
 **Tests**
-- `uv run pytest tests/test_memory_store.py tests/test_agent_memory.py tests/test_voice.py -v`
-- Round-trip: `add_lesson` → `top_k` returns it for similar query.
-- Per-repo isolation: lessons saved under `a/x` not visible from `b/y`.
-- Voice: Telegram file download mocked, Groq Whisper mocked; happy path returns transcript; timeout path raises typed error.
-- Orchestrator: lessons injected into initial messages; `save_lesson` invoked post-PR.
+- `uv run pytest tests/ -v --cov=. --cov-fail-under=70`
+- Checkpoint saver: put / get_tuple / list round-trip.
+- Wiring: every `OrchestratorDeps` field populated.
+- Tenacity: retried after one transient error, fails fast on permanent error.
 
 **Definition of done**
 - All prior tests still pass.
 - New tests pass.
 - `uv run ruff check .` and `uv run black --check .` clean.
-- Coverage ≥ 65% overall.
-- This file updated to point at Phase 6.
+- Coverage ≥ 70% overall (Phase 6 gate).
+- Successful deploy on Railway, live bot completes one PR end-to-end.
+- This file updated to mark Phase 6 done and the project ready for ongoing iteration.
 - `.claude/CLAUDE.md` §11 snapshot updated.
 
 ---
@@ -84,7 +84,7 @@ Studio reads `langgraph.json` at repo root. Every node + tool call streams to La
 | 2 — GitHub Tools | ✅ done | gh/{repo_manager,pr_manager,exceptions}; 19 new tests; 93% coverage |
 | 3 — E2B Sandbox | ✅ done | sandbox/{e2b_runner,exceptions}; RunResult, timeout, scrub, truncate, idempotent shutdown; 18 new tests; 95% coverage |
 | 4 — Agent Brain | ✅ done | LangGraph `StateGraph` (chat→tools→post_tools→{chat\|finalize\|abort}); LangChain `@tool`s, ChatGroq, LangSmith tracing, Studio entry at `langgraph.json`; 90 tests; 96% coverage |
-| 5 — Memory + Voice | 🔨 **in progress** | this doc |
-| 6 — Polish + Deploy | ⏳ | Railway, tenacity, CI→Telegram |
+| 5 — Memory + Voice | ✅ done | memory/{store,exceptions}; agent/memory; bot/voice + /resume; lesson recall+save plumbed into orchestrator; 32 new tests; 95% coverage |
+| 6 — Polish + Deploy | 🔨 **in progress** | this doc |
 
 Full phase details: [build-plan.md](build-plan.md) and CLAUDE.md §5.

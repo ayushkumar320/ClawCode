@@ -94,6 +94,50 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Cancelled.")
 
 
+async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Continue an in-flight task from the latest checkpoint. Usage: /resume <task_id>."""
+    assert update.effective_chat is not None
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await context.bot.send_message(chat_id=chat_id, text="Usage: /resume <task_id>")
+        return
+    task_id = context.args[0]
+    state = _user_state(context)
+    state.setdefault("history", []).append(f"resume: {task_id}")
+    resume_fn = getattr(context.application, "bot_data", {}).get("resume_task")
+    if resume_fn is None:
+        await context.bot.send_message(
+            chat_id=chat_id, text=f"Resume not wired yet (task {task_id})"
+        )
+        return
+    try:
+        await resume_fn(task_id, update, context)
+    except Exception as exc:  # noqa: BLE001 — surface friendly error, not stack
+        logger.exception("resume failed for %s", task_id)
+        await context.bot.send_message(chat_id=chat_id, text=f"Resume failed: {exc}")
+
+
+async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Transcribe a voice note, then treat the transcript as a task message."""
+    assert update.effective_chat is not None and update.effective_message is not None
+    chat_id = update.effective_chat.id
+    voice_msg = update.effective_message.voice
+    if voice_msg is None:
+        return
+    transcribe_fn = getattr(context.application, "bot_data", {}).get("transcribe_voice")
+    if transcribe_fn is None:
+        await context.bot.send_message(chat_id=chat_id, text="Voice not wired yet.")
+        return
+    try:
+        text = await transcribe_fn(context.bot, voice_msg.file_id)
+    except Exception as exc:  # noqa: BLE001 — surface friendly error, not stack
+        logger.exception("voice transcription failed")
+        await context.bot.send_message(chat_id=chat_id, text=f"Voice error: {exc}")
+        return
+    _user_state(context).setdefault("history", []).append(f"voice: {len(text)} chars")
+    await context.bot.send_message(chat_id=chat_id, text=f"transcript: {text}")
+
+
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Echo any free-text message back. Agent dispatch lands in Phase 4."""
     assert update.effective_chat is not None and update.effective_message is not None

@@ -107,6 +107,55 @@ async def test_cancel_sets_idle_and_logs() -> None:
     assert ctx.user_data["history"] == ["cancelled"]
 
 
+async def test_resume_requires_arg() -> None:
+    upd, ctx = _update(), _ctx()
+    ctx.application = SimpleNamespace(bot_data={})
+    await commands.resume(upd, ctx)
+    assert "Usage" in ctx.bot.send_message.await_args.kwargs["text"]
+
+
+async def test_resume_no_dispatcher_replies_friendly() -> None:
+    upd, ctx = _update(), _ctx(args=["task-1"])
+    ctx.application = SimpleNamespace(bot_data={})
+    await commands.resume(upd, ctx)
+    assert "not wired" in ctx.bot.send_message.await_args.kwargs["text"]
+    assert ctx.user_data["history"] == ["resume: task-1"]
+
+
+async def test_resume_invokes_dispatcher() -> None:
+    upd, ctx = _update(), _ctx(args=["task-1"])
+    hook = AsyncMock()
+    ctx.application = SimpleNamespace(bot_data={"resume_task": hook})
+    await commands.resume(upd, ctx)
+    hook.assert_awaited_once_with("task-1", upd, ctx)
+
+
+async def test_voice_no_transcriber_replies_friendly() -> None:
+    upd = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=42),
+        effective_user=SimpleNamespace(id=7),
+        effective_message=SimpleNamespace(voice=SimpleNamespace(file_id="f1")),
+    )
+    ctx = _ctx()
+    ctx.application = SimpleNamespace(bot_data={})
+    await commands.voice(upd, ctx)
+    assert "not wired" in ctx.bot.send_message.await_args.kwargs["text"]
+
+
+async def test_voice_dispatch_happy_path() -> None:
+    upd = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=42),
+        effective_user=SimpleNamespace(id=7),
+        effective_message=SimpleNamespace(voice=SimpleNamespace(file_id="f1")),
+    )
+    ctx = _ctx()
+    fake = AsyncMock(return_value="say hi")
+    ctx.application = SimpleNamespace(bot_data={"transcribe_voice": fake})
+    await commands.voice(upd, ctx)
+    fake.assert_awaited_once()
+    assert "transcript: say hi" in ctx.bot.send_message.await_args.kwargs["text"]
+
+
 async def test_echo_prefixes() -> None:
     upd, ctx = _update(text="hello"), _ctx()
     await commands.echo(upd, ctx)
@@ -176,5 +225,5 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
         max_test_retries=3,
     )
     app = build_application(cfg)
-    # 5 commands + 1 text echo + 1 deny = 7 handlers
-    assert len(app.handlers) == 7
+    # 6 commands + 1 voice + 1 text echo + 1 deny = 9 handlers
+    assert len(app.handlers) == 9
