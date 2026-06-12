@@ -8,7 +8,8 @@ and ``LANGCHAIN_API_KEY`` are present in the environment — see
 from __future__ import annotations
 
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from langchain_groq import ChatGroq
 
@@ -24,9 +25,7 @@ DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
 DEFAULT_TIMEOUT_S = 60
 
 
-def _build_one(
-    *, api_key: str, model: str, timeout_s: float, reasoning_effort: str
-) -> Any:
+def _build_one(*, api_key: str, model: str, timeout_s: float, reasoning_effort: str) -> Any:
     """Construct a single ChatGroq instance with retry + tools bound."""
     base = ChatGroq(
         model=model,

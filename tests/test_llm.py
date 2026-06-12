@@ -62,9 +62,7 @@ def test_build_chat_model_dedupes_primary_from_fallbacks(monkeypatch) -> None:
     factory, instances = _fake_chatgroq_factory()
     monkeypatch.setattr(llm, "ChatGroq", MagicMock(side_effect=factory))
 
-    out = llm.build_chat_model(
-        api_key="k", model="primary", fallback_models=("primary", "fb1")
-    )
+    out = llm.build_chat_model(api_key="k", model="primary", fallback_models=("primary", "fb1"))
     models_built = [kw["model"] for kw, _, _ in instances]
     assert models_built == ["primary", "fb1"]  # duplicate "primary" skipped
     _, _, fbs = out
