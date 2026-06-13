@@ -298,5 +298,5 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
         max_test_retries=3,
     )
     app = build_application(cfg)
-    # 6 commands + 1 voice + 1 text echo + 1 callback + 1 deny = 10 handlers
-    assert len(app.handlers) == 10
+    # 8 commands + 1 voice + 1 text echo + 1 callback + 1 deny = 12 handlers
+    assert len(app.handlers) == 12

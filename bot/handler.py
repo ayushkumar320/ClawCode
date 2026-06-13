@@ -44,6 +44,8 @@ def build_application(settings: Settings) -> Application:
     app.add_handler(CommandHandler("history", commands.history, filters=allow))
     app.add_handler(CommandHandler("cancel", commands.cancel, filters=allow))
     app.add_handler(CommandHandler("resume", commands.resume, filters=allow))
+    app.add_handler(CommandHandler("approve", commands.approve, filters=allow))
+    app.add_handler(CommandHandler("reject", commands.reject, filters=allow))
     app.add_handler(MessageHandler(allow & filters.VOICE, commands.voice))
     app.add_handler(MessageHandler(allow & filters.TEXT & ~filters.COMMAND, commands.echo))
     app.add_handler(CallbackQueryHandler(commands.on_callback))

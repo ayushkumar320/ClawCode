@@ -142,12 +142,56 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_message(chat_id=chat_id, text=f"transcript: {text}")
 
 
+async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Approve a pending task. Usage: /approve [task_id]. No arg = the only pending one."""
+    await _resolve_text(update, context, approved=True, label="approved")
+
+
+async def reject(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reject a pending task. Usage: /reject [task_id]. No arg = the only pending one."""
+    await _resolve_text(update, context, approved=False, label="rejected")
+
+
+async def _resolve_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, approved: bool, label: str
+) -> None:
+    """Shared body for /approve and /reject — resolve via the gate by task_id."""
+    assert update.effective_chat is not None
+    chat_id = update.effective_chat.id
+    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
+    gate = bot_data.get("approval_gate")
+    if gate is None:
+        await context.bot.send_message(chat_id=chat_id, text="Approval gate not wired")
+        return
+    pending = list(gate.waiters.keys())
+    if not pending:
+        await context.bot.send_message(chat_id=chat_id, text="No pending approval")
+        return
+    if context.args:
+        task_id = context.args[0]
+    elif len(pending) == 1:
+        task_id = pending[0]
+    else:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Multiple pending: {', '.join(pending)}. Use /{label[:-1]} <task_id>.",
+        )
+        return
+    resolved = approval.resolve(gate, task_id, approved=approved)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"{label} {task_id}" if resolved else f"No pending request for {task_id}",
+    )
+
+
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Resolve a pending approval ``Future`` based on the operator's button press."""
     query = update.callback_query
     if query is None or query.data is None:
         return
-    logger.info("on_callback fired: data=%r from user=%s", query.data, query.from_user.id if query.from_user else "?")
+    user = getattr(query, "from_user", None)
+    uid = user.id if user else "?"
+    logger.info("on_callback fired: data=%r from user=%s", query.data, uid)
     bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
     gate = bot_data.get("approval_gate")
     secret = bot_data.get("hmac_secret", "")
