@@ -25,32 +25,48 @@ from memory.store import LessonStore
 logger = logging.getLogger(__name__)
 
 
-def make_setup(token: str, default_branch: str, e2b_api_key: str) -> Callable:
+def make_setup(
+    token: str,
+    default_branch: str,
+    e2b_api_key: str,
+    workdirs: dict[int, Path] | None = None,
+) -> Callable:
     """Build the per-task ``setup`` callable: clone repo, start sandbox, upload, install deps."""
     from sandbox import e2b_runner
 
     async def setup(task_id: str, repo_slug: str) -> tuple[Any, Any]:
         workdir = Path(tempfile.mkdtemp(prefix=f"clawcode-{task_id}-"))
-        repo = await repo_manager.clone_repo(
-            repo_slug,
-            workdir / "repo",
-            token=token,
-            default_branch=default_branch,
-        )
-        sandbox = await e2b_runner.start_sandbox(e2b_api_key)
-        await e2b_runner.upload_repo(sandbox, repo.path)
-        await e2b_runner.install_deps(sandbox, api_key=e2b_api_key)
+        try:
+            repo = await repo_manager.clone_repo(
+                repo_slug,
+                workdir / "repo",
+                token=token,
+                default_branch=default_branch,
+            )
+            sandbox = await e2b_runner.start_sandbox(e2b_api_key)
+            await e2b_runner.upload_repo(sandbox, repo.path)
+            await e2b_runner.install_deps(sandbox, api_key=e2b_api_key)
+        except Exception:
+            cleanup_workdir(workdir)
+            raise
+        if workdirs is not None:
+            workdirs[id(sandbox)] = workdir
         return repo, sandbox
 
     return setup
 
 
-def make_teardown() -> Callable:
-    """Build the ``teardown`` callable: idempotent sandbox shutdown."""
+def make_teardown(workdirs: dict[int, Path] | None = None) -> Callable:
+    """Build the ``teardown`` callable: stop sandbox and remove its temp clone."""
     from sandbox import e2b_runner
 
     async def teardown(sandbox: Any) -> None:
-        await e2b_runner.shutdown(sandbox)
+        try:
+            await e2b_runner.shutdown(sandbox)
+        finally:
+            workdir = workdirs.pop(id(sandbox), None) if workdirs is not None else None
+            if workdir is not None:
+                cleanup_workdir(workdir)
 
     return teardown
 
@@ -93,11 +109,15 @@ def compose_deps(
 ) -> OrchestratorDeps:
     """Build a fully-wired ``OrchestratorDeps`` for a real (non-test) task run."""
     recall, save = make_lessons(settings.chroma_dir)
+    workdirs: dict[int, Path] = {}
     return OrchestratorDeps(
         setup=make_setup(
-            settings.github_token, settings.github_default_branch, settings.e2b_api_key
+            settings.github_token,
+            settings.github_default_branch,
+            settings.e2b_api_key,
+            workdirs,
         ),
-        teardown=make_teardown(),
+        teardown=make_teardown(workdirs),
         publish=make_publish(settings.github_token),
         approval=approval,
         groq_api_key=settings.groq_api_key,
@@ -107,6 +127,7 @@ def compose_deps(
         fallback_models=settings.groq_fallback_models,
         recall_lessons=recall,
         save_lesson=save,
+        checkpoint_dir=settings.checkpoint_dir,
     )
 
 

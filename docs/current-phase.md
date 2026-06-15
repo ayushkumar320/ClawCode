@@ -10,11 +10,19 @@ All six planned phases are done. The bot wires end-to-end locally; deployment
 to Railway is a one-step operation (push to a connected repo, set the env
 vars from [.env.example](../.env.example) under Railway → Variables, done).
 
+**Maintenance fixes completed (2026-06-15):**
+- Enabled concurrent Telegram update processing so approval callbacks and
+  `/cancel` remain responsive while an agent task is running.
+- Restricted approval callbacks to the configured Telegram allowlist.
+- Re-uploaded the working tree before every E2B test run and made dependency
+  installation failures abort the task instead of being silently ignored.
+- Added a hard green-test gate before `task_complete` can reach approval.
+- Connected JSON checkpoints to graph tool steps and made `/resume <task_id>`
+  restore message history, retry count, and test state after a restart.
+- Added default-branch detection and guaranteed temporary clone cleanup.
+- Removed committed LangGraph runtime state and ignored `.langgraph_api/`.
+
 **Open follow-ups (none blocking):**
-- Replace the in-graph `MemorySaver` with a JSON-backed `BaseCheckpointSaver`
-  so LangGraph natively resumes mid-tool-call instead of the bot dispatching
-  a fresh run with saved messages. The protocol is non-trivial (channel
-  versions, pending writes). Track as `# TODO(ayush, 2026-06-12)`.
 - Verify Railway deploy + live PR end-to-end once the operator's GitHub
   fine-grained token is provisioned.
 - Wire a `LANGCHAIN_PROJECT` env into the Studio launch command so traces

@@ -10,17 +10,26 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    message_to_dict,
+    messages_from_dict,
+)
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict
 
+from agent import checkpoints
 from agent.exceptions import MaxRetriesExceeded, UserRejected
 from agent.llm import build_chat_model
-from agent.state import GraphState
+from agent.state import AgentState, GraphState
 from agent.tools import TOOLS
 from gh.repo_manager import RepoHandle
 
@@ -49,6 +58,7 @@ class OrchestratorDeps:
     fallback_models: tuple[str, ...] = ()
     recall_lessons: RecallFn | None = None
     save_lesson: SaveLessonFn | None = None
+    checkpoint_dir: Path | None = None
 
 
 def classify_effort(prompt: str) -> str:
@@ -99,8 +109,10 @@ async def nudge_node(state: GraphState, config: RunnableConfig | None = None) ->
 
 async def post_tools_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
     """Update ``retries`` based on the latest ``run_tests`` ToolMessage."""
+    cfg = (config or {}).get("configurable", {}) if config else {}
     last_tool_msgs = _last_tool_messages(state["messages"])
     retries = int(state.get("retries", 0) or 0)
+    tests_passed = bool(state.get("tests_passed", False))
     for tm in last_tool_msgs:
         if tm.name != "run_tests":
             continue
@@ -110,9 +122,27 @@ async def post_tools_node(state: GraphState, config: RunnableConfig | None = Non
             continue
         if payload.get("exit_code", 1) == 0:
             retries = 0
+            tests_passed = True
         else:
             retries += 1
-    return {"retries": retries}
+            tests_passed = False
+    checkpoint_dir = cfg.get("checkpoint_dir")
+    if checkpoint_dir is not None:
+        snapshot = AgentState(
+            task_id=state["task_id"],
+            repo_slug=state["repo_slug"],
+            user_prompt=state["user_prompt"],
+            messages=[message_to_dict(message) for message in state["messages"]],
+            retries=retries,
+            tests_passed=tests_passed,
+        )
+        await checkpoints.save(snapshot, checkpoint_dir)
+    result: dict[str, Any] = {"retries": retries, "tests_passed": tests_passed}
+    if any(tm.name == "task_complete" for tm in last_tool_msgs) and not tests_passed:
+        result["messages"] = [
+            SystemMessage(content="Run the test suite successfully before task_complete.")
+        ]
+    return result
 
 
 async def abort_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
@@ -132,6 +162,8 @@ async def finalize_node(state: GraphState, config: RunnableConfig | None = None)
     summary = payload.get("summary", "")
     lesson = payload.get("lesson", "")
     if not await approval(state["task_id"], summary):
+        if cfg.get("checkpoint_dir") is not None:
+            await checkpoints.clear(state["task_id"], cfg["checkpoint_dir"])
         raise UserRejected(state["task_id"])
     branch = f"agent/{state['task_id']}"
     pr_url = await publish(repo, branch, summary, lesson)
@@ -141,6 +173,8 @@ async def finalize_node(state: GraphState, config: RunnableConfig | None = None)
         except Exception as exc:  # noqa: BLE001 — lesson write is best-effort
             logger.warning("save_lesson failed for %s: %s", state["repo_slug"], exc)
     logger.info("task %s completed: %s", state["task_id"], pr_url)
+    if cfg.get("checkpoint_dir") is not None:
+        await checkpoints.clear(state["task_id"], cfg["checkpoint_dir"])
     return {"pr_url": pr_url}
 
 
@@ -162,7 +196,7 @@ def route_after_post_tools(state: GraphState, config: RunnableConfig | None = No
     if int(state.get("retries", 0) or 0) > max_retries:
         return "abort"
     for tm in reversed(_last_tool_messages(state["messages"])):
-        if tm.name == "task_complete":
+        if tm.name == "task_complete" and state.get("tests_passed", False):
             return "finalize"
     return "chat"
 
@@ -204,6 +238,7 @@ class _ConfigSchema(TypedDict, total=False):
     save_lesson: Any
     e2b_api_key: str | None
     max_retries: int
+    checkpoint_dir: Path | None
     thread_id: str
 
 
@@ -250,6 +285,12 @@ async def run_task(
     deps: OrchestratorDeps,
 ) -> str:
     """Execute one agent task end-to-end. Returns the merged PR URL."""
+    repo_slug, user_prompt, saved = await _load_task_state(
+        task_id,
+        repo_slug,
+        user_prompt,
+        deps.checkpoint_dir,
+    )
     repo, sandbox = await deps.setup(task_id, repo_slug)
     model = build_chat_model(
         api_key=deps.groq_api_key,
@@ -263,14 +304,41 @@ async def run_task(
             lessons_block = await deps.recall_lessons(repo_slug, user_prompt)
         except Exception as exc:  # noqa: BLE001 — recall is best-effort
             logger.warning("recall_lessons failed for %s: %s", repo_slug, exc)
-    initial: GraphState = {
-        "task_id": task_id,
-        "repo_slug": repo_slug,
-        "user_prompt": user_prompt,
-        "messages": build_initial_messages(repo_slug, user_prompt, lessons_block),
-        "retries": 0,
-    }
-    config = {
+    initial = _initial_state(task_id, repo_slug, user_prompt, lessons_block, saved)
+    config = _run_config(task_id, repo_slug, repo, sandbox, model, deps)
+    try:
+        final = await graph.ainvoke(initial, config=config)
+        pr_url = final.get("pr_url")
+        if not pr_url:
+            raise RuntimeError("graph returned without pr_url")
+        return pr_url
+    finally:
+        await deps.teardown(sandbox)
+
+
+async def _load_task_state(
+    task_id: str,
+    repo_slug: str,
+    user_prompt: str,
+    checkpoint_dir: Path | None,
+) -> tuple[str, str, AgentState | None]:
+    """Load saved task identity and prompt when a checkpoint exists."""
+    saved = await checkpoints.load(task_id, checkpoint_dir) if checkpoint_dir else None
+    if saved is None:
+        return repo_slug, user_prompt, None
+    return saved.repo_slug, saved.user_prompt, saved
+
+
+def _run_config(
+    task_id: str,
+    repo_slug: str,
+    repo: RepoHandle,
+    sandbox: Any,
+    model: Any,
+    deps: OrchestratorDeps,
+) -> dict:
+    """Build the per-run LangGraph configuration."""
+    return {
         "configurable": {
             "thread_id": task_id,
             "model": model,
@@ -281,17 +349,33 @@ async def run_task(
             "save_lesson": deps.save_lesson,
             "e2b_api_key": deps.e2b_api_key,
             "max_retries": deps.max_retries,
+            "checkpoint_dir": deps.checkpoint_dir,
         },
         "tags": _trace_tags(task_id, repo_slug),
     }
-    try:
-        final = await graph.ainvoke(initial, config=config)
-        pr_url = final.get("pr_url")
-        if not pr_url:
-            raise RuntimeError("graph returned without pr_url")
-        return pr_url
-    finally:
-        await deps.teardown(sandbox)
+
+
+def _initial_state(
+    task_id: str,
+    repo_slug: str,
+    user_prompt: str,
+    lessons_block: str,
+    saved: AgentState | None,
+) -> GraphState:
+    """Build graph state from a checkpoint or a fresh task request."""
+    messages = (
+        messages_from_dict(saved.messages)
+        if saved is not None
+        else build_initial_messages(repo_slug, user_prompt, lessons_block)
+    )
+    return {
+        "task_id": task_id,
+        "repo_slug": repo_slug,
+        "user_prompt": user_prompt,
+        "messages": messages,
+        "retries": saved.retries if saved is not None else 0,
+        "tests_passed": saved.tests_passed if saved is not None else False,
+    }
 
 
 def _trace_tags(task_id: str, repo_slug: str) -> list[str]:

@@ -117,13 +117,26 @@ async def install_deps(
     remote_dir: str = _REMOTE_REPO_DIR,
     api_key: str | None = None,
 ) -> RunResult:
-    """Install dependencies inside the sandbox. Prefers ``uv``, falls back to pip."""
+    """Install dependencies inside the sandbox and fail when installation fails."""
     cmd = (
         f"mkdir -p {remote_dir} && cd {remote_dir} && "
-        "(uv sync --frozen 2>/dev/null || "
-        "pip install -r requirements.txt 2>/dev/null || true)"
+        "if [ -f uv.lock ]; then uv sync --frozen; "
+        "elif [ -f pyproject.toml ]; then uv sync; "
+        "elif [ -f requirements.txt ]; then uv pip install --system -r requirements.txt; "
+        "else true; fi"
     )
-    return await _run(sandbox, cmd, timeout_s=timeout_s, op="install_deps", api_key=api_key)
+    result = await _run(
+        sandbox,
+        cmd,
+        timeout_s=timeout_s,
+        op="install_deps",
+        api_key=api_key,
+    )
+    if result.exit_code != 0:
+        raise SandboxError(
+            f"install_deps failed with exit code {result.exit_code}: {result.stderr}"
+        )
+    return result
 
 
 @retry(
@@ -141,7 +154,11 @@ async def run_pytest(
     api_key: str | None = None,
 ) -> RunResult:
     """Execute pytest inside the sandbox; returns exit code + captured output."""
-    cmd = f"cd {remote_dir} && pytest {pytest_args}".strip()
+    cmd = (
+        f"cd {remote_dir} && "
+        f"if [ -f pyproject.toml ] || [ -f uv.lock ]; then uv run pytest {pytest_args}; "
+        f"else pytest {pytest_args}; fi"
+    ).strip()
     return await _run(sandbox, cmd, timeout_s=timeout_s, op="run_pytest", api_key=api_key)
 
 

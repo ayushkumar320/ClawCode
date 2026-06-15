@@ -59,8 +59,11 @@ async def write_file(path: str, content: str, config: RunnableConfig) -> str:
 @tool
 async def run_tests(config: RunnableConfig) -> str:
     """Execute pytest inside the E2B sandbox and return exit code + output."""
+    repo = _cfg(config, "repo")
     sandbox = _cfg(config, "sandbox")
     api_key = (config or {}).get("configurable", {}).get("e2b_api_key")
+    await er.upload_repo(sandbox, repo.path)
+    await er.install_deps(sandbox, timeout_s=120, api_key=api_key)
     res = await er.run_pytest(sandbox, timeout_s=120, api_key=api_key)
     return json.dumps({"exit_code": res.exit_code, "stdout": res.stdout, "stderr": res.stderr})
 

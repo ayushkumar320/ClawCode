@@ -8,7 +8,9 @@ import sys
 import uuid
 from functools import partial
 
-from agent import wiring
+from dotenv import load_dotenv
+
+from agent import checkpoints, wiring
 from agent.orchestrator import run_task
 from bot import voice as voice_mod
 from bot.approval import ApprovalGate, request_approval
@@ -29,6 +31,7 @@ def make_dispatch(cfg: Settings, gate: ApprovalGate, bot) -> object:
 
     async def dispatch(repo_slug: str, prompt: str, chat_id: int) -> str:
         task_id = uuid.uuid4().hex[:12]
+        await bot.send_message(chat_id=chat_id, text=f"Task started: {task_id}")
         approval_cb = partial(
             request_approval,
             gate,
@@ -51,11 +54,10 @@ def make_resume(cfg: Settings, gate: ApprovalGate, bot) -> object:
 
     async def resume(task_id: str, update, context) -> None:
         chat_id = update.effective_chat.id
-        repo_slug = context.user_data.get("repo") if context.user_data else None
-        if not repo_slug:
-            await bot.send_message(chat_id=chat_id, text="Set /repo first to resume.")
+        saved = await checkpoints.load(task_id, cfg.checkpoint_dir)
+        if saved is None:
+            await bot.send_message(chat_id=chat_id, text=f"No checkpoint found for {task_id}.")
             return
-        prompt = context.user_data.get("last_prompt", "(resumed task)")
 
         async def approval(tid: str, summary: str) -> bool:
             return await request_approval(
@@ -63,7 +65,7 @@ def make_resume(cfg: Settings, gate: ApprovalGate, bot) -> object:
             )
 
         deps = wiring.compose_deps(cfg, approval=approval)
-        url = await run_task(task_id, repo_slug, prompt, deps)
+        url = await run_task(task_id, saved.repo_slug, saved.user_prompt, deps)
         await bot.send_message(chat_id=chat_id, text=f"PR: {url}")
 
     return resume
@@ -84,6 +86,8 @@ def wire_application(cfg: Settings):
     gate = ApprovalGate()
     app.bot_data["approval_gate"] = gate
     app.bot_data["hmac_secret"] = cfg.telegram_bot_token
+    app.bot_data["allowed_user_ids"] = frozenset(cfg.telegram_allowed_user_ids)
+    app.bot_data["active_tasks"] = {}
     app.bot_data["dispatch_task"] = make_dispatch(cfg, gate, app.bot)
     app.bot_data["resume_task"] = make_resume(cfg, gate, app.bot)
     app.bot_data["transcribe_voice"] = make_transcriber(cfg)
@@ -92,6 +96,7 @@ def wire_application(cfg: Settings):
 
 def main() -> int:
     """Boot the bot in long-polling mode; return non-zero on configuration error."""
+    load_dotenv()
     try:
         cfg = get()
     except SettingsError as exc:

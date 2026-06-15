@@ -133,3 +133,38 @@ async def test_clone_bad_url_raises(tmp_path: Path) -> None:
             token=None,
             origin_url=str(tmp_path / "does-not-exist"),
         )
+
+
+async def test_clone_detects_nonstandard_default_branch(tmp_path: Path) -> None:
+    bare = tmp_path / "origin.git"
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "init", "--bare", "-b", "trunk", str(bare)], check=True)
+    subprocess.run(["git", "init", "-b", "trunk", str(seed)], check=True)
+    (seed / "README.md").write_text("hello\n")
+    subprocess.run(["git", "-C", str(seed), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(seed),
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "init",
+        ],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(seed), "remote", "add", "origin", str(bare)], check=True)
+    subprocess.run(["git", "-C", str(seed), "push", "origin", "trunk"], check=True)
+    handle = await rm.clone_repo(
+        "o/r",
+        tmp_path / "work",
+        token=None,
+        default_branch="main",
+        origin_url=str(bare),
+    )
+    assert handle.default_branch == "trunk"
+    assert "trunk" in handle.protected

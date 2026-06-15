@@ -18,6 +18,7 @@ class GraphState(TypedDict, total=False):
     user_prompt: str
     messages: Annotated[list[AnyMessage], add_messages]
     retries: int
+    tests_passed: bool
     pr_url: str
 
 
@@ -29,4 +30,5 @@ class AgentState(BaseModel):
     user_prompt: str
     messages: list[dict[str, Any]] = Field(default_factory=list)
     retries: int = 0
-    version: int = 1
+    tests_passed: bool = False
+    version: int = 2

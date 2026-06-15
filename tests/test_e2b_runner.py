@@ -143,7 +143,13 @@ async def test_install_deps_invokes_shell() -> None:
     sb = _fake_sandbox(SimpleNamespace(exit_code=0, stdout="", stderr=""))
     await er.install_deps(sb, timeout_s=10)
     cmd = sb.commands.run.await_args.args[0]
-    assert "uv sync" in cmd and "pip install" in cmd
+    assert "uv sync" in cmd and "uv pip install" in cmd
+
+
+async def test_install_deps_raises_on_nonzero_exit() -> None:
+    sb = _fake_sandbox(SimpleNamespace(exit_code=1, stdout="", stderr="broken"))
+    with pytest.raises(SandboxError, match="exit code 1"):
+        await er.install_deps(sb, timeout_s=10)
 
 
 # ---------- shutdown ----------

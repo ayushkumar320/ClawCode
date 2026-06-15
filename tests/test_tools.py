@@ -13,11 +13,17 @@ from agent import tools as agent_tools
 
 def _config(monkeypatch, *, exit_code: int = 0) -> dict:
     """Patch gh + sandbox and return a RunnableConfig wiring them in."""
-    repo = SimpleNamespace(slug="o/r")
+    repo = SimpleNamespace(slug="o/r", path=SimpleNamespace())
     sandbox = SimpleNamespace()
     monkeypatch.setattr(agent_tools.rm, "list_files", AsyncMock(return_value=["a.py"]))
     monkeypatch.setattr(agent_tools.rm, "read_file", AsyncMock(return_value="hi"))
     monkeypatch.setattr(agent_tools.rm, "write_file", AsyncMock())
+    monkeypatch.setattr(agent_tools.er, "upload_repo", AsyncMock(return_value=1))
+    monkeypatch.setattr(
+        agent_tools.er,
+        "install_deps",
+        AsyncMock(return_value=SimpleNamespace(exit_code=0, stdout="", stderr="", duration_s=0.1)),
+    )
     monkeypatch.setattr(
         agent_tools.er,
         "run_pytest",
@@ -58,6 +64,8 @@ async def test_run_tests(monkeypatch) -> None:
     cfg = _config(monkeypatch, exit_code=0)
     raw = await agent_tools.run_tests.ainvoke({}, config=cfg)
     assert json.loads(raw)["exit_code"] == 0
+    agent_tools.er.upload_repo.assert_awaited_once()
+    agent_tools.er.install_deps.assert_awaited_once()
 
 
 async def test_task_complete() -> None:

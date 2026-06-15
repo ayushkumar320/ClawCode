@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import cast
@@ -33,6 +34,42 @@ def parse_repo_url(url: str) -> str:
 def _user_state(context: ContextTypes.DEFAULT_TYPE) -> dict:
     """Return the per-user mutable state dict (PTB-managed, in-memory)."""
     return cast(dict, context.user_data)
+
+
+async def _dispatch_prompt(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    text: str,
+    source: str,
+) -> None:
+    """Run a prompt through the task dispatcher when a repo is configured."""
+    assert update.effective_chat is not None
+    chat_id = update.effective_chat.id
+    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
+    dispatch = bot_data.get("dispatch_task")
+    state = _user_state(context)
+    repo_slug = state.get("repo")
+    if dispatch is None or not repo_slug:
+        await context.bot.send_message(chat_id=chat_id, text=f"echo: {text}")
+        return
+    state["status"] = "running"
+    state["last_prompt"] = text
+    active_tasks = bot_data.setdefault("active_tasks", {})
+    current_task = asyncio.current_task()
+    if current_task is not None:
+        active_tasks[chat_id] = current_task
+    try:
+        url = await dispatch(repo_slug, text, chat_id)
+        await context.bot.send_message(chat_id=chat_id, text=f"PR: {url}")
+    except Exception as exc:  # noqa: BLE001 — surface friendly error, not stack
+        logger.exception("task dispatch failed")
+        await context.bot.send_message(chat_id=chat_id, text=f"Task failed: {exc}")
+    finally:
+        if active_tasks.get(chat_id) is current_task:
+            active_tasks.pop(chat_id, None)
+        state["status"] = "idle"
+        state.setdefault("history", []).append(f"{source}: {text[:50]}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -90,10 +127,15 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Clear the current task state for this user."""
     assert update.effective_chat is not None
+    chat_id = update.effective_chat.id
     state = _user_state(context)
     state["status"] = "idle"
     state.setdefault("history", []).append("cancelled")
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Cancelled.")
+    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
+    task = bot_data.get("active_tasks", {}).get(chat_id)
+    if task is not None and not task.done():
+        task.cancel()
+    await context.bot.send_message(chat_id=chat_id, text="Cancelled.")
 
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -138,8 +180,8 @@ async def voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("voice transcription failed")
         await context.bot.send_message(chat_id=chat_id, text=f"Voice error: {exc}")
         return
-    _user_state(context).setdefault("history", []).append(f"voice: {len(text)} chars")
     await context.bot.send_message(chat_id=chat_id, text=f"transcript: {text}")
+    await _dispatch_prompt(update, context, text=text, source="voice")
 
 
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -195,6 +237,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
     gate = bot_data.get("approval_gate")
     secret = bot_data.get("hmac_secret", "")
+    allowed = bot_data.get("allowed_user_ids", frozenset())
+    if allowed and getattr(user, "id", None) not in allowed:
+        logger.warning("rejected callback from non-allowlisted user=%s", uid)
+        await query.answer("Not authorized", show_alert=True)
+        return
     if gate is None:
         await query.answer("Approval gate not wired", show_alert=True)
         return
@@ -211,22 +258,5 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Dispatch free text as a task if wired; otherwise echo back."""
     assert update.effective_chat is not None and update.effective_message is not None
-    chat_id = update.effective_chat.id
     text = update.effective_message.text or ""
-    bot_data = getattr(getattr(context, "application", None), "bot_data", {}) or {}
-    dispatch = bot_data.get("dispatch_task")
-    state = _user_state(context)
-    repo_slug = state.get("repo")
-    if dispatch is None or not repo_slug:
-        await context.bot.send_message(chat_id=chat_id, text=f"echo: {text}")
-        return
-    state["status"] = "running"
-    try:
-        url = await dispatch(repo_slug, text, chat_id)
-        await context.bot.send_message(chat_id=chat_id, text=f"PR: {url}")
-    except Exception as exc:  # noqa: BLE001 — surface friendly error, not stack
-        logger.exception("task dispatch failed")
-        await context.bot.send_message(chat_id=chat_id, text=f"Task failed: {exc}")
-    finally:
-        state["status"] = "idle"
-        state.setdefault("history", []).append(f"task: {text[:50]}")
+    await _dispatch_prompt(update, context, text=text, source="task")

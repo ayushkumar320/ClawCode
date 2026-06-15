@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.messages import AIMessage
 
+from agent import checkpoints
 from agent import orchestrator as orch
 from agent import tools as agent_tools
 from agent.exceptions import MaxRetriesExceeded, UserRejected
@@ -41,6 +42,8 @@ def _patch_tools(monkeypatch, *, exit_code: int = 0) -> None:
     monkeypatch.setattr(agent_tools.rm, "list_files", AsyncMock(return_value=["a.py"]))
     monkeypatch.setattr(agent_tools.rm, "read_file", AsyncMock(return_value="hi"))
     monkeypatch.setattr(agent_tools.rm, "write_file", AsyncMock())
+    monkeypatch.setattr(agent_tools.er, "upload_repo", AsyncMock(return_value=1))
+    monkeypatch.setattr(agent_tools.er, "install_deps", AsyncMock())
     monkeypatch.setattr(
         agent_tools.er,
         "run_pytest",
@@ -51,7 +54,7 @@ def _patch_tools(monkeypatch, *, exit_code: int = 0) -> None:
 
 
 def _deps(*, approval_ok: bool = True) -> orch.OrchestratorDeps:
-    repo = SimpleNamespace(slug="o/r")
+    repo = SimpleNamespace(slug="o/r", path=Path("/tmp/repo"))
     sandbox = SimpleNamespace()
     return orch.OrchestratorDeps(
         setup=AsyncMock(return_value=(repo, sandbox)),
@@ -124,7 +127,10 @@ async def test_run_task_user_rejection(tmp_path: Path, monkeypatch) -> None:
     _patch_tools(monkeypatch)
     _patch_chat(
         monkeypatch,
-        [_ai([{"id": "c1", "name": "task_complete", "args": {"summary": "x"}}])],
+        [
+            _ai([{"id": "c1", "name": "run_tests", "args": {}}]),
+            _ai([{"id": "c2", "name": "task_complete", "args": {"summary": "x"}}]),
+        ],
     )
     deps = _deps(approval_ok=False)
     with pytest.raises(UserRejected):
@@ -138,6 +144,7 @@ async def test_run_task_recalls_and_saves_lessons(tmp_path: Path, monkeypatch) -
     _patch_chat(
         monkeypatch,
         [
+            _ai([{"id": "c0", "name": "run_tests", "args": {}}]),
             _ai(
                 [
                     {
@@ -146,7 +153,7 @@ async def test_run_task_recalls_and_saves_lessons(tmp_path: Path, monkeypatch) -
                         "args": {"summary": "ok", "lesson": "lesson body"},
                     }
                 ]
-            )
+            ),
         ],
     )
     deps = _deps()
@@ -172,9 +179,52 @@ async def test_run_task_nudges_on_empty_turn(tmp_path: Path, monkeypatch) -> Non
         monkeypatch,
         [
             _ai(content="thinking..."),
-            _ai([{"id": "c1", "name": "task_complete", "args": {"summary": "ok"}}]),
+            _ai([{"id": "c1", "name": "run_tests", "args": {}}]),
+            _ai([{"id": "c2", "name": "task_complete", "args": {"summary": "ok"}}]),
         ],
     )
     deps = _deps()
     url = await orch.run_task("t-nudge", "o/r", "add x", deps)
     assert url == "https://gh/pr/1"
+
+
+async def test_run_task_resumes_from_checkpoint(tmp_path: Path, monkeypatch) -> None:
+    _patch_tools(monkeypatch)
+    _patch_chat(
+        monkeypatch,
+        [_ai([{"id": "c1", "name": "list_files", "args": {}}])],
+    )
+    deps = _deps()
+    deps.checkpoint_dir = tmp_path
+    with pytest.raises(AssertionError, match="exhausted"):
+        await orch.run_task("t-resume", "o/r", "add x", deps)
+    saved = await checkpoints.load("t-resume", tmp_path)
+    assert saved is not None
+    assert saved.messages
+
+    _patch_chat(
+        monkeypatch,
+        [
+            _ai([{"id": "c2", "name": "run_tests", "args": {}}]),
+            _ai([{"id": "c3", "name": "task_complete", "args": {"summary": "done"}}]),
+        ],
+    )
+    url = await orch.run_task("t-resume", "ignored/repo", "ignored prompt", deps)
+    assert url == "https://gh/pr/1"
+    assert await checkpoints.load("t-resume", tmp_path) is None
+
+
+async def test_task_complete_requires_green_tests(tmp_path: Path, monkeypatch) -> None:
+    _patch_tools(monkeypatch)
+    _patch_chat(
+        monkeypatch,
+        [
+            _ai([{"id": "c1", "name": "task_complete", "args": {"summary": "early"}}]),
+            _ai([{"id": "c2", "name": "run_tests", "args": {}}]),
+            _ai([{"id": "c3", "name": "task_complete", "args": {"summary": "done"}}]),
+        ],
+    )
+    deps = _deps()
+    url = await orch.run_task("t-guard", "o/r", "add x", deps)
+    assert url == "https://gh/pr/1"
+    deps.publish.assert_awaited_once()

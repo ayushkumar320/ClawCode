@@ -35,7 +35,7 @@ async def _deny(update: Update, context) -> None:  # noqa: ANN001 — PTB callba
 
 def build_application(settings: Settings) -> Application:
     """Construct the PTB Application with command + echo handlers wired up."""
-    app = ApplicationBuilder().token(settings.telegram_bot_token).build()
+    app = ApplicationBuilder().token(settings.telegram_bot_token).concurrent_updates(8).build()
     allow = _allow_filter(settings.telegram_allowed_user_ids)
 
     app.add_handler(CommandHandler("start", commands.start, filters=allow))

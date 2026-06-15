@@ -61,9 +61,24 @@ async def clone_repo(
         await asyncio.to_thread(Repo.clone_from, url, str(dest))
     except GitCommandError as exc:
         raise RepoError(_scrub(f"clone failed for {slug}: {exc}", token)) from exc
+    repo = Repo(str(dest))
+    detected_branch = repo.active_branch.name
+    selected_branch = default_branch if default_branch in repo.heads else detected_branch
+    if selected_branch != default_branch:
+        logger.warning(
+            "configured default branch %s absent for %s; using %s",
+            default_branch,
+            slug,
+            selected_branch,
+        )
     logger.info("cloned %s into %s", slug, dest)
-    protected = frozenset(_PROTECTED_DEFAULT | {default_branch})
-    return RepoHandle(slug=slug, path=dest, default_branch=default_branch, protected=protected)
+    protected = frozenset(_PROTECTED_DEFAULT | {selected_branch})
+    return RepoHandle(
+        slug=slug,
+        path=dest,
+        default_branch=selected_branch,
+        protected=protected,
+    )
 
 
 async def list_files(handle: RepoHandle) -> list[str]:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -102,9 +102,18 @@ async def test_history_empty_then_populated() -> None:
 async def test_cancel_sets_idle_and_logs() -> None:
     upd, ctx = _update(), _ctx()
     ctx.user_data["status"] = "running"
+    ctx.application = SimpleNamespace(bot_data={"active_tasks": {}})
     await commands.cancel(upd, ctx)
     assert ctx.user_data["status"] == "idle"
     assert ctx.user_data["history"] == ["cancelled"]
+
+
+async def test_cancel_stops_active_task() -> None:
+    upd, ctx = _update(), _ctx()
+    task = SimpleNamespace(done=lambda: False, cancel=MagicMock())
+    ctx.application = SimpleNamespace(bot_data={"active_tasks": {42: task}})
+    await commands.cancel(upd, ctx)
+    task.cancel.assert_called_once()
 
 
 async def test_resume_requires_arg() -> None:
@@ -153,7 +162,29 @@ async def test_voice_dispatch_happy_path() -> None:
     ctx.application = SimpleNamespace(bot_data={"transcribe_voice": fake})
     await commands.voice(upd, ctx)
     fake.assert_awaited_once()
-    assert "transcript: say hi" in ctx.bot.send_message.await_args.kwargs["text"]
+    sent = [call.kwargs["text"] for call in ctx.bot.send_message.await_args_list]
+    assert "transcript: say hi" in sent
+    assert "echo: say hi" in sent
+
+
+async def test_voice_dispatches_task_when_wired() -> None:
+    upd = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=42),
+        effective_user=SimpleNamespace(id=7),
+        effective_message=SimpleNamespace(voice=SimpleNamespace(file_id="f1")),
+    )
+    ctx = _ctx()
+    ctx.user_data["repo"] = "o/r"
+    transcribe = AsyncMock(return_value="fix the tests")
+    dispatch = AsyncMock(return_value="https://gh/pr/9")
+    ctx.application = SimpleNamespace(
+        bot_data={"transcribe_voice": transcribe, "dispatch_task": dispatch}
+    )
+    await commands.voice(upd, ctx)
+    dispatch.assert_awaited_once_with("o/r", "fix the tests", 42)
+    assert ctx.user_data["last_prompt"] == "fix the tests"
+    assert ctx.user_data["history"][-1] == "voice: fix the tests"
+    assert ctx.user_data["status"] == "idle"
 
 
 async def test_echo_falls_back_when_unwired() -> None:
@@ -170,6 +201,8 @@ async def test_echo_dispatches_when_wired() -> None:
     await commands.echo(upd, ctx)
     dispatch.assert_awaited_once_with("o/r", "add x", 42)
     assert "https://gh/pr/1" in ctx.bot.send_message.await_args.kwargs["text"]
+    assert ctx.user_data["last_prompt"] == "add x"
+    assert ctx.user_data["history"][-1] == "task: add x"
     assert ctx.user_data["status"] == "idle"
 
 
@@ -216,6 +249,29 @@ async def test_on_callback_rejects_tampered_payload() -> None:
     query.answer.assert_awaited_once()
     args = query.answer.await_args
     assert "Invalid" in args.args[0]
+
+
+async def test_on_callback_rejects_non_allowlisted_user() -> None:
+    from bot import approval as approval_mod
+
+    gate = approval_mod.ApprovalGate()
+    query = SimpleNamespace(
+        data="approve:t-1:unused",
+        from_user=SimpleNamespace(id=99),
+        answer=AsyncMock(),
+    )
+    upd = SimpleNamespace(callback_query=query, effective_chat=SimpleNamespace(id=1))
+    ctx = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "approval_gate": gate,
+                "hmac_secret": "sec",
+                "allowed_user_ids": frozenset({7}),
+            }
+        )
+    )
+    await commands.on_callback(upd, ctx)
+    query.answer.assert_awaited_once_with("Not authorized", show_alert=True)
 
 
 # ---------- Keyboards ----------
@@ -278,6 +334,9 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
 
     class _FakeBuilder:
         def token(self, _t: str) -> _FakeBuilder:
+            return self
+
+        def concurrent_updates(self, _count: int) -> _FakeBuilder:
             return self
 
         def build(self) -> _FakeApp:

@@ -45,6 +45,7 @@ coverage.xml
 checkpoints/*
 !checkpoints/.gitkeep
 chroma_data/
+.langgraph_api/
 *.sqlite3
 
 # IDE / OS
