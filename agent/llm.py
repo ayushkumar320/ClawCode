@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "qwen/qwen3-32b"
 DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+    "meta-llama/llama-4-scout-17b-16e-instruct",
 )
 DEFAULT_TIMEOUT_S = 60
 
