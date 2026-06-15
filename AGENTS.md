@@ -231,10 +231,10 @@ Run all: `pytest tests/ -v`. Coverage gates: Phase 2 ≥60%, Phase 4 ≥65%, Pha
 
 ## 11. Current Phase Tracker
 
-Authoritative pointer: [docs/current-phase.md](../docs/current-phase.md). Update that file at the end of every phase; keep the snapshot below in sync.
+Authoritative pointer: keep the snapshot below updated at the end of every phase.
 
 ```
 Current Phase: Phase 2 — GitHub Tools
 Last completed milestone: Phase 1 (PTB skeleton; /repo, /status, /history, /cancel, echo, allowlist; 24 tests green)
-Next action: Build github/repo_manager.py, github/pr_manager.py, github/exceptions.py + tests per docs/current-phase.md.
+Next action: Build github/repo_manager.py, github/pr_manager.py, github/exceptions.py + tests for the next planned milestone.
 ```
