@@ -13,15 +13,13 @@ def _fake_chatgroq_factory():
 
     def factory(**kwargs):
         bound = MagicMock(name=f"bound-{kwargs['model']}")
-        retried = MagicMock(name=f"retried-{kwargs['model']}")
-        retried.model = kwargs["model"]
-        retried.with_fallbacks = MagicMock(
-            side_effect=lambda fbs: ("with_fallbacks", retried, tuple(fbs))
+        bound.model = kwargs["model"]
+        bound.with_fallbacks = MagicMock(
+            side_effect=lambda fbs: ("with_fallbacks", bound, tuple(fbs))
         )
-        bound.with_retry = MagicMock(return_value=retried)
         inst = MagicMock(name=f"inst-{kwargs['model']}")
         inst.bind_tools = MagicMock(return_value=bound)
-        instances.append((kwargs, inst, retried))
+        instances.append((kwargs, inst, bound))
         return inst
 
     return factory, instances
@@ -34,7 +32,7 @@ def test_build_chat_model_single_when_no_fallbacks(monkeypatch) -> None:
     out = llm.build_chat_model(
         api_key="k", model="m", reasoning_effort="none", timeout_s=5, fallback_models=()
     )
-    assert out is instances[0][2]  # the retry-wrapped model, no with_fallbacks wrap
+    assert out is instances[0][2]
     assert len(instances) == 1
     assert instances[0][0]["max_retries"] == 0
     instances[0][1].bind_tools.assert_called_once()
@@ -52,10 +50,9 @@ def test_build_chat_model_wraps_with_fallbacks(monkeypatch) -> None:
     # Three ChatGroq builds: primary + two fallbacks
     models_built = [kw["model"] for kw, _, _ in instances]
     assert models_built == ["primary", "fb1", "fb2"]
-    # Returned object is the with_fallbacks tuple emitted by the primary's retried mock
-    tag, primary_retried, fbs = out
+    tag, primary_bound, fbs = out
     assert tag == "with_fallbacks"
-    assert primary_retried.model == "primary"
+    assert primary_bound.model == "primary"
     assert tuple(b.model for b in fbs) == ("fb1", "fb2")
 
 
