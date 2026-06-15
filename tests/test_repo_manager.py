@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from git import Repo
@@ -111,6 +112,35 @@ async def test_push_branch_lands(tmp_path: Path, origin: Path) -> None:
     await rm.push_branch(h, "agent/test")
     bare = Repo(str(origin))
     assert "agent/test" in [r.name for r in bare.references]
+
+
+async def test_push_branch_uses_authenticated_url(monkeypatch, tmp_path: Path) -> None:
+    repo = MagicMock()
+    monkeypatch.setattr(rm, "Repo", MagicMock(return_value=repo))
+    handle = rm.RepoHandle("foo/bar", tmp_path, "main")
+    await rm.push_branch(handle, "agent/test", token="secret")
+    repo.git.push.assert_called_once_with(
+        "https://x-access-token:secret@github.com/foo/bar.git",
+        "agent/test:agent/test",
+    )
+
+
+async def test_push_permission_error_is_actionable(monkeypatch, tmp_path: Path) -> None:
+    repo = MagicMock()
+    repo.git.push.side_effect = rm.GitCommandError(
+        "push",
+        128,
+        stderr="remote: Permission to foo/bar denied\nerror 403",
+    )
+    monkeypatch.setattr(rm, "Repo", MagicMock(return_value=repo))
+    handle = rm.RepoHandle("foo/bar", tmp_path, "main")
+    with pytest.raises(RepoError, match="Contents: Read and write") as exc:
+        await rm.push_branch.retry_with(stop=rm.stop_after_attempt(1))(
+            handle,
+            "agent/test",
+            token="secret",
+        )
+    assert "secret" not in str(exc.value)
 
 
 async def test_read_file_escape_rejected(tmp_path: Path, origin: Path) -> None:

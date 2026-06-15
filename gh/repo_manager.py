@@ -192,10 +192,17 @@ async def push_branch(handle: RepoHandle, name: str, *, token: str | None = None
 
     def _push() -> None:
         repo = Repo(str(handle.path))
-        repo.git.push("origin", name)
+        target = _remote_url(handle.slug, token) if token else "origin"
+        repo.git.push(target, f"{name}:{name}")
 
     try:
         await asyncio.to_thread(_push)
     except GitCommandError as exc:
-        raise RepoError(_scrub(f"push failed for {name}: {exc}", token)) from exc
+        message = _scrub(f"push failed for {name}: {exc}", token)
+        if "403" in message or "Permission to" in message:
+            message += (
+                ". Check that GITHUB_TOKEN can access this repository and has "
+                "'Contents: Read and write' permission."
+            )
+        raise RepoError(message) from exc
     logger.info("pushed branch %s for %s", name, handle.slug)
