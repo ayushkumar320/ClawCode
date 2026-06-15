@@ -12,7 +12,7 @@ from config.settings import Settings
 
 def _settings(tmp_path: Path) -> Settings:
     return Settings(
-        groq_api_key="g",
+        llm_api_key="hf",
         telegram_bot_token="t",
         telegram_allowed_user_ids=(1,),
         github_token="gh",
@@ -22,6 +22,9 @@ def _settings(tmp_path: Path) -> Settings:
         checkpoint_dir=tmp_path / "ckpt",
         chroma_dir=tmp_path / "chroma",
         max_test_retries=3,
+        llm_provider="huggingface",
+        llm_model="Qwen/Qwen3-Coder-32B",
+        llm_fallback_models=("deepseek-ai/DeepSeek-R1-0528",),
     )
 
 
@@ -91,7 +94,8 @@ def test_compose_deps_populates_every_field(monkeypatch, tmp_path: Path) -> None
     assert deps.approval is not None
     assert deps.recall_lessons is not None
     assert deps.save_lesson is not None
-    assert deps.groq_api_key == "g"
+    assert deps.llm_api_key == "hf"
+    assert deps.llm_provider == "huggingface"
     assert deps.e2b_api_key == "e"
     assert deps.max_retries == 3
 

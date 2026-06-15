@@ -345,7 +345,7 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
     monkeypatch.setattr(h, "ApplicationBuilder", lambda: _FakeBuilder())
 
     cfg = Settings(
-        groq_api_key="g",
+        llm_api_key="hf",
         telegram_bot_token="t",
         telegram_allowed_user_ids=(1, 2),
         github_token="gh",
@@ -355,6 +355,8 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
         checkpoint_dir=__import__("pathlib").Path("./checkpoints"),
         chroma_dir=__import__("pathlib").Path("./chroma_data"),
         max_test_retries=3,
+        llm_provider="huggingface",
+        llm_model="Qwen/Qwen3-Coder-32B",
     )
     app = build_application(cfg)
     # 8 commands + 1 voice + 1 text echo + 1 callback + 1 deny = 12 handlers

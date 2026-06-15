@@ -51,11 +51,13 @@ class OrchestratorDeps:
     teardown: TeardownFn
     publish: PublishFn
     approval: ApprovalFn
-    groq_api_key: str
+    llm_api_key: str
+    llm_provider: str = "huggingface"
     e2b_api_key: str | None = None
     max_retries: int = 3
-    model: str = "qwen/qwen3-32b"
+    model: str = "Qwen/Qwen3-Coder-32B"
     fallback_models: tuple[str, ...] = ()
+    llm_base_url: str | None = None
     recall_lessons: RecallFn | None = None
     save_lesson: SaveLessonFn | None = None
     checkpoint_dir: Path | None = None
@@ -293,9 +295,11 @@ async def run_task(
     )
     repo, sandbox = await deps.setup(task_id, repo_slug)
     model = build_chat_model(
-        api_key=deps.groq_api_key,
+        api_key=deps.llm_api_key,
+        provider=deps.llm_provider,
         model=deps.model,
         fallback_models=deps.fallback_models,
+        base_url=deps.llm_base_url,
         reasoning_effort=classify_effort(user_prompt),
     )
     lessons_block = ""

@@ -1,4 +1,4 @@
-"""Tests for the LangGraph orchestrator — ChatGroq + gh + sandbox all mocked."""
+"""Tests for the LangGraph orchestrator — chat model + gh + sandbox all mocked."""
 
 from __future__ import annotations
 
@@ -61,7 +61,8 @@ def _deps(*, approval_ok: bool = True) -> orch.OrchestratorDeps:
         teardown=AsyncMock(),
         publish=AsyncMock(return_value="https://gh/pr/1"),
         approval=AsyncMock(return_value=approval_ok),
-        groq_api_key="g",
+        llm_api_key="hf",
+        llm_provider="huggingface",
         e2b_api_key="k",
         max_retries=2,
     )

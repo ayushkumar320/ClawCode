@@ -7,7 +7,7 @@ import importlib
 import pytest
 
 _ENV = {
-    "GROQ_API_KEY": "g",
+    "LLM_API_KEY": "hf",
     "TELEGRAM_BOT_TOKEN": "t",
     "TELEGRAM_ALLOWED_USER_IDS": "1,2, 3",
     "GITHUB_TOKEN": "gh",
@@ -18,11 +18,14 @@ _ENV = {
 def _reload(monkeypatch, env):
     """Apply env and reimport the settings module fresh."""
     for k in (
-        "GROQ_API_KEY",
+        "LLM_API_KEY",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_ALLOWED_USER_IDS",
         "GITHUB_TOKEN",
         "E2B_API_KEY",
+        "LLM_PROVIDER",
+        "LLM_MODEL",
+        "LLM_FALLBACK_MODELS",
         "GITHUB_DEFAULT_BRANCH",
         "LOG_LEVEL",
         "MAX_TEST_RETRIES",
@@ -38,6 +41,8 @@ def _reload(monkeypatch, env):
 def test_load_ok(monkeypatch):
     s = _reload(monkeypatch, _ENV)
     cfg = s.load()
+    assert cfg.llm_api_key == "hf"
+    assert cfg.llm_provider == "huggingface"
     assert cfg.telegram_allowed_user_ids == (1, 2, 3)
     assert cfg.github_default_branch == "main"
     assert cfg.max_test_retries == 3
@@ -46,7 +51,7 @@ def test_load_ok(monkeypatch):
 
 def test_missing_key_raises(monkeypatch):
     env = dict(_ENV)
-    env.pop("GROQ_API_KEY")
+    env.pop("LLM_API_KEY")
     s = _reload(monkeypatch, env)
     with pytest.raises(s.SettingsError):
         s.load()

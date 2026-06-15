@@ -10,7 +10,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _REQUIRED = (
-    "GROQ_API_KEY",
+    "LLM_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_ALLOWED_USER_IDS",
     "GITHUB_TOKEN",
@@ -34,7 +34,7 @@ def _parse_user_ids(raw: str) -> tuple[int, ...]:
 class Settings:
     """Immutable bundle of validated environment configuration."""
 
-    groq_api_key: str
+    llm_api_key: str
     telegram_bot_token: str
     telegram_allowed_user_ids: tuple[int, ...]
     github_token: str
@@ -44,12 +44,18 @@ class Settings:
     checkpoint_dir: Path
     chroma_dir: Path
     max_test_retries: int
-    groq_model: str = "qwen/qwen3-32b"
-    groq_fallback_models: tuple[str, ...] = ()
+    llm_provider: str = "huggingface"
+    llm_model: str = "Qwen/Qwen3-Coder-32B"
+    llm_fallback_models: tuple[str, ...] = ()
+    llm_base_url: str = "https://router.huggingface.co/v1"
+    groq_api_key: str = ""
     langsmith_tracing: bool = False
     langsmith_api_key: str = ""
     langsmith_project: str = "clawcode"
-    components: tuple[str, ...] = field(default=("groq", "telegram", "github", "e2b"), repr=False)
+    components: tuple[str, ...] = field(
+        default=("llm", "telegram", "github", "e2b"),
+        repr=False,
+    )
 
     def verify(self) -> str:
         """Return a human-readable OK summary; raises if anything is missing."""
@@ -63,7 +69,7 @@ def load() -> Settings:
         raise SettingsError(f"Missing required env vars: {', '.join(missing)}")
 
     return Settings(
-        groq_api_key=os.environ["GROQ_API_KEY"],
+        llm_api_key=os.environ["LLM_API_KEY"],
         telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
         telegram_allowed_user_ids=_parse_user_ids(os.environ["TELEGRAM_ALLOWED_USER_IDS"]),
         github_token=os.environ["GITHUB_TOKEN"],
@@ -76,15 +82,18 @@ def load() -> Settings:
         langsmith_api_key=os.getenv("LANGCHAIN_API_KEY", ""),
         langsmith_project=os.getenv("LANGCHAIN_PROJECT", "clawcode"),
         max_test_retries=int(os.getenv("MAX_TEST_RETRIES", "3")),
-        groq_model=os.getenv("GROQ_MODEL", "qwen/qwen3-32b"),
-        groq_fallback_models=tuple(
+        llm_provider=os.getenv("LLM_PROVIDER", "huggingface").strip().lower(),
+        llm_model=os.getenv("LLM_MODEL", "Qwen/Qwen3-Coder-32B"),
+        llm_fallback_models=tuple(
             m.strip()
             for m in os.getenv(
-                "GROQ_FALLBACK_MODELS",
-                "openai/gpt-oss-20b,meta-llama/llama-4-scout-17b-16e-instruct",
+                "LLM_FALLBACK_MODELS",
+                "deepseek-ai/DeepSeek-R1-0528,meta-llama/Llama-3.3-70B-Instruct",
             ).split(",")
             if m.strip()
         ),
+        llm_base_url=os.getenv("LLM_BASE_URL", "https://router.huggingface.co/v1"),
+        groq_api_key=os.getenv("GROQ_API_KEY", ""),
     )
 
 
