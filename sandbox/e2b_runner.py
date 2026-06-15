@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from e2b.sandbox.commands.command_handle import CommandExitException
 from e2b_code_interpreter import AsyncSandbox  # type: ignore[import-not-found]
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
@@ -178,6 +179,8 @@ async def _run(
         res = await sandbox.commands.run(cmd, timeout=timeout_s)
     except TimeoutError as exc:
         raise SandboxTimeoutError(f"{op} exceeded {timeout_s}s") from exc
+    except CommandExitException as exc:
+        return _exit_result(exc, start)
     except Exception as exc:  # noqa: BLE001 — SDK error surface is broad
         raise SandboxError(_scrub(f"{op} failed: {exc}", api_key)) from exc
     duration = time.monotonic() - start
@@ -186,6 +189,18 @@ async def _run(
         stdout=_truncate(getattr(res, "stdout", "") or ""),
         stderr=_truncate(getattr(res, "stderr", "") or ""),
         duration_s=duration,
+    )
+
+
+def _exit_result(exc: CommandExitException, start: float) -> RunResult:
+    """Convert an E2B nonzero command exit into a normal command result."""
+    error = getattr(exc, "error", "") or ""
+    stderr = getattr(exc, "stderr", "") or error
+    return RunResult(
+        exit_code=int(exc.exit_code),
+        stdout=_truncate(getattr(exc, "stdout", "") or ""),
+        stderr=_truncate(stderr),
+        duration_s=time.monotonic() - start,
     )
 
 

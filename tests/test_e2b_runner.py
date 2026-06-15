@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from e2b.sandbox.commands.command_handle import CommandExitException
 
 from sandbox import e2b_runner as er
 from sandbox.exceptions import SandboxError, SandboxTimeoutError
@@ -132,6 +133,19 @@ async def test_run_wraps_and_scrubs() -> None:
     with pytest.raises(SandboxError) as ei:
         await er.run_pytest(sb, timeout_s=1, api_key="secret-k")
     assert "secret-k" not in str(ei.value)
+
+
+async def test_run_preserves_nonzero_command_exit() -> None:
+    sb = _fake_sandbox()
+    sb.commands.run.side_effect = CommandExitException(
+        stdout="collected 0 items",
+        stderr="",
+        exit_code=5,
+        error="",
+    )
+    result = await er.run_pytest(sb, timeout_s=5)
+    assert result.exit_code == 5
+    assert result.stdout == "collected 0 items"
 
 
 async def test_invalid_timeout_rejected() -> None:
