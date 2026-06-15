@@ -23,7 +23,7 @@ def _settings(tmp_path: Path) -> Settings:
         chroma_dir=tmp_path / "chroma",
         max_test_retries=3,
         llm_provider="huggingface",
-        llm_model="Qwen/Qwen3-Coder-32B",
+        llm_model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
         llm_fallback_models=("deepseek-ai/DeepSeek-R1-0528",),
     )
 

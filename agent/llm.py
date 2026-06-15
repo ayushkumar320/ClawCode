@@ -10,6 +10,7 @@ from groq import RateLimitError as GroqRateLimitError
 from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
+from openai import BadRequestError, NotFoundError
 from openai import RateLimitError as OpenAIRateLimitError
 
 from agent.tools import TOOLS
@@ -17,7 +18,7 @@ from agent.tools import TOOLS
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROVIDER = "huggingface"
-DEFAULT_MODEL = "Qwen/Qwen3-Coder-32B"
+DEFAULT_MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
 DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
     "deepseek-ai/DeepSeek-R1-0528",
     "meta-llama/Llama-3.3-70B-Instruct",
@@ -83,12 +84,14 @@ def _build_one(
     raise ValueError(f"unsupported llm provider: {provider}")
 
 
-def _is_rate_limit(provider: str, exc: Exception) -> bool:
-    """Return whether an exception represents a provider rate limit."""
+def _is_fallback_error(provider: str, exc: Exception) -> bool:
+    """Return whether an exception should advance to the next configured model."""
     if provider == "groq":
         return isinstance(exc, GroqRateLimitError)
     if provider == "huggingface":
-        return isinstance(exc, OpenAIRateLimitError)
+        if isinstance(exc, (OpenAIRateLimitError, NotFoundError)):
+            return True
+        return isinstance(exc, BadRequestError) and getattr(exc, "code", None) == "model_not_found"
     return False
 
 
@@ -125,13 +128,13 @@ def build_chat_model(
             try:
                 return await candidate.ainvoke(messages, config=config)
             except Exception as exc:  # noqa: BLE001 - provider SDKs differ
-                if not _is_rate_limit(provider, exc):
+                if not _is_fallback_error(provider, exc):
                     raise
                 last_error = exc
                 if index == len(models) - 1:
                     raise
                 logger.warning(
-                    "%s model %s rate limited; switching to %s",
+                    "%s model %s unavailable; switching to %s",
                     provider,
                     model_names[index],
                     model_names[index + 1],

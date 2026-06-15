@@ -55,7 +55,7 @@ class OrchestratorDeps:
     llm_provider: str = "huggingface"
     e2b_api_key: str | None = None
     max_retries: int = 3
-    model: str = "Qwen/Qwen3-Coder-32B"
+    model: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
     fallback_models: tuple[str, ...] = ()
     llm_base_url: str | None = None
     recall_lessons: RecallFn | None = None

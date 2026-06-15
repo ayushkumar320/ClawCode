@@ -45,7 +45,7 @@ class Settings:
     chroma_dir: Path
     max_test_retries: int
     llm_provider: str = "huggingface"
-    llm_model: str = "Qwen/Qwen3-Coder-32B"
+    llm_model: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
     llm_fallback_models: tuple[str, ...] = ()
     llm_base_url: str = "https://router.huggingface.co/v1"
     groq_api_key: str = ""
@@ -83,7 +83,7 @@ def load() -> Settings:
         langsmith_project=os.getenv("LANGCHAIN_PROJECT", "clawcode"),
         max_test_retries=int(os.getenv("MAX_TEST_RETRIES", "3")),
         llm_provider=os.getenv("LLM_PROVIDER", "huggingface").strip().lower(),
-        llm_model=os.getenv("LLM_MODEL", "Qwen/Qwen3-Coder-32B"),
+        llm_model=os.getenv("LLM_MODEL", "Qwen/Qwen3-Coder-30B-A3B-Instruct"),
         llm_fallback_models=tuple(
             m.strip()
             for m in os.getenv(

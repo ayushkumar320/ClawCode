@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from groq import RateLimitError as GroqRateLimitError
+from openai import NotFoundError
 from openai import RateLimitError as OpenAIRateLimitError
 
 from agent import llm
@@ -34,7 +35,7 @@ def test_build_chat_model_single_huggingface(monkeypatch) -> None:
     out = llm.build_chat_model(
         api_key="hf",
         provider="huggingface",
-        model="Qwen/Qwen3-Coder-32B",
+        model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
         timeout_s=5,
         fallback_models=(),
     )
@@ -92,6 +93,24 @@ async def test_huggingface_rate_limit_uses_next_model(monkeypatch) -> None:
     instances[0][2].ainvoke.assert_awaited_once()
     instances[1][2].ainvoke.assert_awaited_once()
     instances[2][2].ainvoke.assert_not_awaited()
+
+
+async def test_huggingface_missing_model_uses_next_model(monkeypatch) -> None:
+    factory, instances = _fake_factory("openai")
+    monkeypatch.setattr(llm, "ChatOpenAI", MagicMock(side_effect=factory))
+    model = llm.build_chat_model(
+        api_key="hf",
+        provider="huggingface",
+        model="missing",
+        fallback_models=("working",),
+    )
+    response = MagicMock(request=MagicMock(), status_code=404, headers={})
+    instances[0][2].ainvoke.side_effect = NotFoundError(
+        "model not found",
+        response=response,
+        body={"error": {"code": "model_not_found"}},
+    )
+    assert await model.ainvoke(["message"]) == "response-working"
 
 
 async def test_groq_rate_limit_uses_next_model(monkeypatch) -> None:

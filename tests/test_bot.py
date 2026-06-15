@@ -356,7 +356,7 @@ def test_build_application_registers_handlers(monkeypatch) -> None:
         chroma_dir=__import__("pathlib").Path("./chroma_data"),
         max_test_retries=3,
         llm_provider="huggingface",
-        llm_model="Qwen/Qwen3-Coder-32B",
+        llm_model="Qwen/Qwen3-Coder-30B-A3B-Instruct",
     )
     app = build_application(cfg)
     # 8 commands + 1 voice + 1 text echo + 1 callback + 1 deny = 12 handlers
