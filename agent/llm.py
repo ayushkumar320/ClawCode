@@ -23,6 +23,7 @@ DEFAULT_FALLBACK_MODELS: tuple[str, ...] = (
     "llama-3.1-8b-instant",
 )
 DEFAULT_TIMEOUT_S = 60
+MODEL_RETRY_ATTEMPTS = 2
 
 
 def _build_one(*, api_key: str, model: str, timeout_s: float, reasoning_effort: str) -> Any:
@@ -31,9 +32,13 @@ def _build_one(*, api_key: str, model: str, timeout_s: float, reasoning_effort: 
         model=model,
         api_key=api_key,
         timeout=timeout_s,
+        max_retries=0,
         reasoning_effort=reasoning_effort,
     ).bind_tools(list(TOOLS))
-    return bound.with_retry(stop_after_attempt=3, wait_exponential_jitter=True)
+    return bound.with_retry(
+        stop_after_attempt=MODEL_RETRY_ATTEMPTS,
+        wait_exponential_jitter=True,
+    )
 
 
 def build_chat_model(

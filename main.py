@@ -24,6 +24,10 @@ def setup_logging(cfg: Settings) -> None:
         level=cfg.log_level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    if not cfg.langsmith_tracing:
+        logging.getLogger("langchain_core.tracers").setLevel(logging.ERROR)
 
 
 def make_dispatch(cfg: Settings, gate: ApprovalGate, bot) -> object:

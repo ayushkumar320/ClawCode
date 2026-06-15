@@ -36,6 +36,7 @@ def test_build_chat_model_single_when_no_fallbacks(monkeypatch) -> None:
     )
     assert out is instances[0][2]  # the retry-wrapped model, no with_fallbacks wrap
     assert len(instances) == 1
+    assert instances[0][0]["max_retries"] == 0
     instances[0][1].bind_tools.assert_called_once()
 
 
