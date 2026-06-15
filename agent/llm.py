@@ -11,6 +11,8 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
+from groq import RateLimitError
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_groq import ChatGroq
 
 from agent.tools import TOOLS
@@ -44,24 +46,35 @@ def build_chat_model(
     reasoning_effort: str = "default",
     fallback_models: Sequence[str] = DEFAULT_FALLBACK_MODELS,
 ) -> Any:
-    """Return primary ChatGroq with tool-bound fallbacks for resilience."""
-    primary = _build_one(
-        api_key=api_key,
-        model=model,
-        timeout_s=timeout_s,
-        reasoning_effort=reasoning_effort,
-    )
-    fallbacks = [
+    """Return a model chain that immediately falls back on Groq rate limits."""
+    model_names = [model, *(fb for fb in fallback_models if fb and fb != model)]
+    models = [
         _build_one(
             api_key=api_key,
-            model=fb,
+            model=name,
             timeout_s=timeout_s,
             reasoning_effort=reasoning_effort,
         )
-        for fb in fallback_models
-        if fb and fb != model
+        for name in model_names
     ]
-    if not fallbacks:
-        return primary
-    logger.info("chat model %s with fallbacks=%s", model, list(fallback_models))
-    return primary.with_fallbacks(fallbacks)
+    if len(models) == 1:
+        return models[0]
+    logger.info("chat model chain=%s", model_names)
+
+    async def invoke(messages: Any, config: RunnableConfig) -> Any:
+        last_error: RateLimitError | None = None
+        for index, candidate in enumerate(models):
+            try:
+                return await candidate.ainvoke(messages, config=config)
+            except RateLimitError as exc:
+                last_error = exc
+                if index == len(models) - 1:
+                    raise
+                logger.warning(
+                    "Groq model %s rate limited; switching to %s",
+                    model_names[index],
+                    model_names[index + 1],
+                )
+        raise last_error  # pragma: no cover - loop always returns or raises
+
+    return RunnableLambda(invoke)
