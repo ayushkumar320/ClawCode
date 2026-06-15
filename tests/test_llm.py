@@ -39,6 +39,19 @@ def test_build_chat_model_single_when_no_fallbacks(monkeypatch) -> None:
     instances[0][1].bind_tools.assert_called_once()
 
 
+def test_reasoning_effort_only_sent_to_supported_model(monkeypatch) -> None:
+    factory, instances = _fake_chatgroq_factory()
+    monkeypatch.setattr(llm, "ChatGroq", MagicMock(side_effect=factory))
+    llm.build_chat_model(
+        api_key="k",
+        model="qwen/qwen3-32b",
+        reasoning_effort="none",
+        fallback_models=("llama-3.3-70b-versatile",),
+    )
+    assert instances[0][0]["reasoning_effort"] == "none"
+    assert "reasoning_effort" not in instances[1][0]
+
+
 async def test_build_chat_model_wraps_with_fallbacks(monkeypatch) -> None:
     factory, instances = _fake_chatgroq_factory()
     monkeypatch.setattr(llm, "ChatGroq", MagicMock(side_effect=factory))

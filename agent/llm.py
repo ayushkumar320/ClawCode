@@ -29,12 +29,16 @@ DEFAULT_TIMEOUT_S = 60
 
 def _build_one(*, api_key: str, model: str, timeout_s: float, reasoning_effort: str) -> Any:
     """Construct a single tool-bound ChatGroq model without same-model retries."""
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "api_key": api_key,
+        "timeout": timeout_s,
+        "max_retries": 0,
+    }
+    if model.startswith("qwen/"):
+        kwargs["reasoning_effort"] = reasoning_effort
     return ChatGroq(
-        model=model,
-        api_key=api_key,
-        timeout=timeout_s,
-        max_retries=0,
-        reasoning_effort=reasoning_effort,
+        **kwargs,
     ).bind_tools(list(TOOLS))
 
 

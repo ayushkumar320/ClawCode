@@ -26,6 +26,7 @@ def setup_logging(cfg: Settings) -> None:
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("huggingface_hub.utils._http").setLevel(logging.ERROR)
     if not cfg.langsmith_tracing:
         logging.getLogger("langchain_core.tracers").setLevel(logging.ERROR)
 

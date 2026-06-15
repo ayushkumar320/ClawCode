@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import uuid
 from functools import lru_cache
@@ -32,7 +33,11 @@ def _embedding_fn() -> Any:
     """Lazily build the sentence-transformer embedding function (loaded once)."""
     from chromadb.utils import embedding_functions  # type: ignore[import-not-found]
 
-    return embedding_functions.SentenceTransformerEmbeddingFunction(model_name=_EMBEDDING_MODEL)
+    kwargs: dict[str, Any] = {"model_name": _EMBEDDING_MODEL}
+    token = os.getenv("HF_TOKEN")
+    if token:
+        kwargs["token"] = token
+    return embedding_functions.SentenceTransformerEmbeddingFunction(**kwargs)
 
 
 class LessonStore:
